@@ -1,0 +1,38 @@
+- git:
+    uri: https://github.com/kindsenior/hrpsys-base
+    local-name: hrpsys
+    version: current-torque-control
+- git:
+    uri: https://github.com/fkanehiro/openhrp3
+    local-name: openhrp3
+- git: # hrpsysのidlがmasterと異なるため再ビルド必要
+    uri: https://github.com/start-jsk/rtmros_common
+    local-name: rtm-ros-robotics/rtmros_common
+- git:
+    uri: https://github.com/Naoki-Hiraoka/rtmbuild2
+    local-name: rtmbuild2
+- git:
+    uri: https://github.com/choreonoid/choreonoid
+    local-name: choreonoid
+    version: release-1.7
+- git:
+    uri: https://github.com/Naoki-Hiraoka/cpp_filters
+    local-name: cpp_filters
+- git:
+    uri: https://github.com/Naoki-Hiraoka/ik_solvers
+    local-name: ik_solvers
+- git:
+    uri: https://github.com/Naoki-Hiraoka/abseil_catkin.git
+    local-name: abseil_catkin
+- git:
+    uri: https://github.com/Naoki-Hiraoka/qp_solvers
+    local-name: qp_solvers
+- git:
+    uri: https://github.com/Naoki-Hiraoka/prioritized_qp
+    local-name: prioritized_qp
+- git:
+    uri: https://github.com/Naoki-Hiraoka/joint_limit_table
+    local-name: joint_limit_table
+- git:
+    uri: https://github.com/Naoki-Hiraoka/collision_checker_rtc
+    local-name: collision_checker_rtc
