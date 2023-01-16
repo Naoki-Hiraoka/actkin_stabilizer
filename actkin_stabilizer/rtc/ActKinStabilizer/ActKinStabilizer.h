@@ -1,5 +1,5 @@
-#ifndef AutoStabilizer_H
-#define AutoStabilizer_H
+#ifndef ActKinStabilizer_H
+#define ActKinStabilizer_H
 
 #include <memory>
 #include <map>
@@ -26,9 +26,8 @@
 
 #include <hrpsys/idl/RobotHardwareService.hh>
 #include <collision_checker_msgs/idl/Collision.hh>
-#include <auto_stabilizer_msgs/idl/AutoStabilizer.hh>
 
-#include "AutoStabilizerService_impl.h"
+#include "ActKinStabilizerService_impl.h"
 #include "GaitParam.h"
 #include "RefToGenFrameConverter.h"
 #include "ActToGenFrameConverter.h"
@@ -41,9 +40,9 @@
 #include "FullbodyIKSolver.h"
 #include "CmdVelGenerator.h"
 
-class AutoStabilizer : public RTC::DataFlowComponentBase{
+class ActKinStabilizer : public RTC::DataFlowComponentBase{
 public:
-  AutoStabilizer(RTC::Manager* manager);
+  ActKinStabilizer(RTC::Manager* manager);
   virtual RTC::ReturnCode_t onInitialize();
   virtual RTC::ReturnCode_t onFinalize();
   virtual RTC::ReturnCode_t onActivated(RTC::UniqueId ec_id);
@@ -54,14 +53,14 @@ public:
   bool goVelocity(const double& vx, const double& vy, const double& vth);
   bool goStop();
   bool jumpTo(const double& x, const double& y, const double& z, const double& ts, const double& tf);
-  bool setFootSteps(const OpenHRP::AutoStabilizerService::FootstepSequence& fs);
-  bool setFootStepsWithParam(const OpenHRP::AutoStabilizerService::FootstepSequence& fs, const OpenHRP::AutoStabilizerService::StepParamSequence& sps);
+  bool setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs);
+  bool setFootStepsWithParam(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs, const actkin_stabilizer::ActKinStabilizerService::StepParamSequence& sps);
   void waitFootSteps();
   bool startAutoBalancer();
   bool stopAutoBalancer();
-  bool setAutoStabilizerParam(const OpenHRP::AutoStabilizerService::AutoStabilizerParam& i_param);
-  bool getAutoStabilizerParam(OpenHRP::AutoStabilizerService::AutoStabilizerParam& i_param);
-  bool getFootStepState(OpenHRP::AutoStabilizerService::FootStepState& i_param);
+  bool setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
+  bool getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
+  bool getFootStepState(actkin_stabilizer::ActKinStabilizerService::FootStepState& i_param);
   bool releaseEmergencyStop();
   bool startStabilizer(void);
   bool stopStabilizer(void);
@@ -127,10 +126,10 @@ protected:
     std::vector<RTC::TimedDoubleSeq> m_actEEWrench_; // Generate World frame. EndEffector origin. 要素数及び順番はgaitParam_.eeNameと同じ. ロボットが受ける力
     std::vector<std::unique_ptr<RTC::OutPort<RTC::TimedDoubleSeq> > > m_actEEWrenchOut_;
 
-    AutoStabilizerService_impl m_service0_;
-    RTC::CorbaPort m_AutoStabilizerServicePort_;
+    ActKinStabilizerService_impl m_service0_;
+    RTC::CorbaPort m_ActKinStabilizerServicePort_;
 
-    RTC::CorbaConsumer<OpenHRP::RobotHardwareService> m_robotHardwareService0_;
+    RTC::CorbaConsumer<actkin_stabilizer::RobotHardwareService> m_robotHardwareService0_;
     RTC::CorbaPort m_RobotHardwareServicePort_;
 
 
@@ -175,7 +174,7 @@ protected:
   class ControlMode{
   public:
     /*
-      MODE_IDLE -> startAutoBalancer() -> MODE_SYNC_TO_ABC -> MODE_ABC -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST -> stopStabilizer() -> MODE_SYNC_TO_STOPST -> MODE_ABC -> stopAutoBalancer() -> MODE_SYNC_TO_IDLE -> MODE_IDLE
+      MODE_IDLE -> startActKinBalancer() -> MODE_SYNC_TO_ABC -> MODE_ABC -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST -> stopStabilizer() -> MODE_SYNC_TO_STOPST -> MODE_ABC -> stopActKinBalancer() -> MODE_SYNC_TO_IDLE -> MODE_IDLE
       MODE_SYNC_TO*の時間はtransition_timeの時間をかけて遷移するが、少なくとも1周期はMODE_SYNC_TO*を経由する.
       MODE_SYNC_TO*では、基本的に次のMODEと同じ処理が行われるが、出力時に前回のMODEの出力から補間するような軌道に加工されることで出力の連続性を確保する
       補間している途中で別のmodeに切り替わることは無いので、そこは安心してプログラムを書いてよい(例外はonActivated). 同様に、remainTimeが突然減ったり増えたりすることもない
@@ -269,17 +268,17 @@ protected:
 protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
-  static void copyEigenCoords2FootStep(const cnoid::Position& in_fs, OpenHRP::AutoStabilizerService::Footstep& out_fs);
+  static void copyEigenCoords2FootStep(const cnoid::Position& in_fs, actkin_stabilizer::ActKinStabilizerService::Footstep& out_fs);
 
-  static bool readInPortData(const double& dt, const GaitParam& gaitParam, const AutoStabilizer::ControlMode& mode, AutoStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal);
-  static bool execAutoStabilizer(const AutoStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const FullbodyIKSolver& fullbodyIKSolver, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator);
-  static bool writeOutPortData(AutoStabilizer::Ports& ports, const AutoStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam);
+  static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal);
+  static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const FullbodyIKSolver& fullbodyIKSolver, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator);
+  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam);
 };
 
 
 extern "C"
 {
-  void AutoStabilizerInit(RTC::Manager* manager);
+  void ActKinStabilizerInit(RTC::Manager* manager);
 };
 
-#endif // AutoStabilizer_H
+#endif // ActKinStabilizer_H

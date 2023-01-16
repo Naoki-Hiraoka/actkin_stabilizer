@@ -30,9 +30,9 @@ link_directories(
   ${CHOREONOID_LIBRARY_DIRS}
   )
 
-add_library(AutoStabilizer SHARED
-  AutoStabilizer.cpp
-  AutoStabilizerService_impl.cpp
+add_library(ActKinStabilizer SHARED
+  ActKinStabilizer.cpp
+  ActKinStabilizerService_impl.cpp
   LegCoordsGenerator.cpp
   FootStepGenerator.cpp
   RefToGenFrameConverter.cpp
@@ -45,20 +45,20 @@ add_library(AutoStabilizer SHARED
   CmdVelGenerator.cpp
   MathUtil.cpp
   )
-target_link_libraries(AutoStabilizer
+target_link_libraries(ActKinStabilizer
   ${catkin_LIBRARIES}
   ${CHOREONOID_BODY_LIBRARIES}
   ${openrtm_aist_LIBRARIES}
   ${${PROJECT_NAME}_IDLLIBRARY_DIRS} # generated from idl in this package
   RobotHardwareServiceSkel RobotHardwareServiceStub
   )
-set_target_properties(AutoStabilizer PROPERTIES PREFIX "")
-add_dependencies(AutoStabilizer RTMBUILD2_${PROJECT_NAME}_genrpc) # wait for rtmbuild2_genidl
+set_target_properties(ActKinStabilizer PROPERTIES PREFIX "")
+add_dependencies(ActKinStabilizer RTMBUILD2_${PROJECT_NAME}_genrpc) # wait for rtmbuild2_genidl
 
-add_executable(AutoStabilizerComp AutoStabilizerComp.cpp)
-target_link_libraries(AutoStabilizerComp AutoStabilizer)
+add_executable(ActKinStabilizerComp ActKinStabilizerComp.cpp)
+target_link_libraries(ActKinStabilizerComp ActKinStabilizer)
 
-install(TARGETS AutoStabilizer
+install(TARGETS ActKinStabilizer
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}

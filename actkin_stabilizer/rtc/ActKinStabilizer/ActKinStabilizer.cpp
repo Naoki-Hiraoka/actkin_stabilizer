@@ -1,4 +1,4 @@
-#include "AutoStabilizer.h"
+#include "ActKinStabilizer.h"
 #include <cnoid/BodyLoader>
 #include <cnoid/ForceSensor>
 #include <cnoid/RateGyroSensor>
@@ -8,10 +8,10 @@
 #include "CnoidBodyUtil.h"
 #include <limits>
 
-static const char* AutoStabilizer_spec[] = {
-  "implementation_id", "AutoStabilizer",
-  "type_name",         "AutoStabilizer",
-  "description",       "AutoStabilizer component",
+static const char* ActKinStabilizer_spec[] = {
+  "implementation_id", "ActKinStabilizer",
+  "type_name",         "ActKinStabilizer",
+  "description",       "ActKinStabilizer component",
   "version",           "0.0",
   "vendor",            "Naoki-Hiraoka",
   "category",          "example",
@@ -22,7 +22,7 @@ static const char* AutoStabilizer_spec[] = {
   ""
 };
 
-AutoStabilizer::Ports::Ports() :
+ActKinStabilizer::Ports::Ports() :
   m_qRefIn_("qRef", m_qRef_),
   m_refTauIn_("refTauIn", m_refTau_),
   m_refBasePosIn_("refBasePosIn", m_refBasePos_),
@@ -58,19 +58,19 @@ AutoStabilizer::Ports::Ports() :
   m_strideLimitationHullOut_("strideLimitationHullOut", m_strideLimitationHull_),
   m_cpViewerLogOut_("cpViewerLogOut", m_cpViewerLog_),
 
-  m_AutoStabilizerServicePort_("AutoStabilizerService"),
+  m_ActKinStabilizerServicePort_("ActKinStabilizerService"),
 
   m_RobotHardwareServicePort_("RobotHardwareService"){
 }
 
-AutoStabilizer::AutoStabilizer(RTC::Manager* manager) : RTC::DataFlowComponentBase(manager),
+ActKinStabilizer::ActKinStabilizer(RTC::Manager* manager) : RTC::DataFlowComponentBase(manager),
   ports_(),
   debugLevel_(0)
 {
   this->ports_.m_service0_.setComp(this);
 }
 
-RTC::ReturnCode_t AutoStabilizer::onInitialize(){
+RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
 
   // add ports
   this->addInPort("qRef", this->ports_.m_qRefIn_);
@@ -105,8 +105,8 @@ RTC::ReturnCode_t AutoStabilizer::onInitialize(){
   this->addOutPort("steppableRegionNumLogOut", this->ports_.m_steppableRegionNumLogOut_);
   this->addOutPort("strideLimitationHullOut", this->ports_.m_strideLimitationHullOut_);
   this->addOutPort("cpViewerLogOut", this->ports_.m_cpViewerLogOut_);
-  this->ports_.m_AutoStabilizerServicePort_.registerProvider("service0", "AutoStabilizerService", this->ports_.m_service0_);
-  this->addPort(this->ports_.m_AutoStabilizerServicePort_);
+  this->ports_.m_ActKinStabilizerServicePort_.registerProvider("service0", "ActKinStabilizerService", this->ports_.m_service0_);
+  this->addPort(this->ports_.m_ActKinStabilizerServicePort_);
   this->ports_.m_RobotHardwareServicePort_.registerConsumer("service0", "RobotHardwareService", this->ports_.m_robotHardwareService0_);
   this->addPort(this->ports_.m_RobotHardwareServicePort_);
   {
@@ -335,7 +335,7 @@ RTC::ReturnCode_t AutoStabilizer::onInitialize(){
 }
 
 // static function
-bool AutoStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam, const AutoStabilizer::ControlMode& mode, AutoStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal){
+bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal){
   bool qRef_updated = false;
   if(ports.m_qRefIn_.isNew()){
     ports.m_qRefIn_.read();
@@ -559,8 +559,8 @@ bool AutoStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam
 }
 
 // static function
-bool AutoStabilizer::execAutoStabilizer(const AutoStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const FullbodyIKSolver& fullbodyIKSolver,const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator) {
-  if(mode.isSyncToABCInit()){ // startAutoBalancer直後の初回. gaitParamのリセット
+bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const FullbodyIKSolver& fullbodyIKSolver,const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator) {
+  if(mode.isSyncToABCInit()){ // startActKinBalancer直後の初回. gaitParamのリセット
     refToGenFrameConverter.initGenRobot(gaitParam,
                                         gaitParam.genRobot, gaitParam.footMidCoords, gaitParam.genCogVel, gaitParam.genCogAcc);
     externalForceHandler.initExternalForceHandlerOutput(gaitParam,
@@ -599,7 +599,7 @@ bool AutoStabilizer::execAutoStabilizer(const AutoStabilizer::ControlMode& mode,
   cmdVelGenerator.calcCmdVel(gaitParam,
                              gaitParam.cmdVel);
 
-  // AutoBalancer
+  // ActKinBalancer
   footStepGenerator.procFootStepNodesList(gaitParam, dt, mode.isSTRunning(),
                                           gaitParam.footstepNodesList, gaitParam.srcCoords, gaitParam.dstCoordsOrg, gaitParam.remainTimeOrg, gaitParam.swingState, gaitParam.elapsedTime, gaitParam.prevSupportPhase, gaitParam.relLandingHeight);
   footStepGenerator.calcFootSteps(gaitParam, dt, mode.isSTRunning(),
@@ -633,7 +633,7 @@ bool AutoStabilizer::execAutoStabilizer(const AutoStabilizer::ControlMode& mode,
 }
 
 // static function
-bool AutoStabilizer::writeOutPortData(AutoStabilizer::Ports& ports, const AutoStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam){
+bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam){
   if(mode.isSyncToABC()){
     if(mode.isSyncToABCInit()){
       idleToAbcTransitionInterpolator.reset(0.0);
@@ -653,7 +653,7 @@ bool AutoStabilizer::writeOutPortData(AutoStabilizer::Ports& ports, const AutoSt
     ports.m_q_.tm = ports.m_qRef_.tm;
     ports.m_q_.data.length(gaitParam.genRobot->numJoints());
     for(int i=0;i<gaitParam.genRobot->numJoints();i++){
-      if(mode.now() == AutoStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
+      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
         double value = gaitParam.refRobotRaw->joint(i)->q();
         if(std::isfinite(value)) ports.m_q_.data[i] = value;
         else std::cerr << "m_q is not finite!" << std::endl;
@@ -676,7 +676,7 @@ bool AutoStabilizer::writeOutPortData(AutoStabilizer::Ports& ports, const AutoSt
     ports.m_genTau_.tm = ports.m_qRef_.tm;
     ports.m_genTau_.data.length(gaitParam.actRobotTqc->numJoints());
     for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
-      if(mode.now() == AutoStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
+      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
         double value = gaitParam.refRobotRaw->joint(i)->u();
         if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
         else std::cerr << "m_genTau is not finite!" << std::endl;
@@ -697,7 +697,7 @@ bool AutoStabilizer::writeOutPortData(AutoStabilizer::Ports& ports, const AutoSt
   {
     // basePose
     cnoid::Position basePose;
-    if(mode.now() == AutoStabilizer::ControlMode::MODE_IDLE){
+    if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE){
       basePose = gaitParam.refRobotRaw->rootLink()->T();
     }else if(mode.isSyncToABC() || mode.isSyncToIdle()){
       double ratio = idleToAbcTransitionInterpolator.value();
@@ -772,7 +772,7 @@ bool AutoStabilizer::writeOutPortData(AutoStabilizer::Ports& ports, const AutoSt
   if(!CORBA::is_nil(ports.m_robotHardwareService0_._ptr()) && //コンシューマにプロバイダのオブジェクト参照がセットされていない(接続されていない)状態
      !ports.m_robotHardwareService0_->_non_existent()){ //プロバイダのオブジェクト参照は割り当てられているが、相手のオブジェクトが非活性化 (RTC は Inactive 状態) になっている状態
     for(int i=0;i<gaitParam.genRobot->numJoints();i++){
-      if(mode.now() == AutoStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
+      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
         // pass
       }else if(mode.isSyncToABC()){
         // pass
@@ -951,13 +951,13 @@ bool AutoStabilizer::writeOutPortData(AutoStabilizer::Ports& ports, const AutoSt
   return true;
 }
 
-RTC::ReturnCode_t AutoStabilizer::onExecute(RTC::UniqueId ec_id){
+RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   std::string instance_name = std::string(this->m_profile.instance_name);
   this->loop_++;
 
-  if(!AutoStabilizer::readInPortData(this->dt_, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.selfCollision, this->gaitParam_.steppableRegion, this->gaitParam_.steppableHeight, this->gaitParam_.relLandingHeight, this->gaitParam_.relLandingNormal)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
+  if(!ActKinStabilizer::readInPortData(this->dt_, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.selfCollision, this->gaitParam_.steppableRegion, this->gaitParam_.steppableHeight, this->gaitParam_.relLandingHeight, this->gaitParam_.relLandingNormal)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
 
   this->mode_.update(this->dt_);
   this->gaitParam_.update(this->dt_);
@@ -965,7 +965,7 @@ RTC::ReturnCode_t AutoStabilizer::onExecute(RTC::UniqueId ec_id){
   this->fullbodyIKSolver_.update(this->dt_);
 
   if(this->mode_.isABCRunning()) {
-    if(this->mode_.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
+    if(this->mode_.isSyncToABCInit()){ // startActKinBalancer直後の初回. 内部パラメータのリセット
       this->gaitParam_.reset();
       this->refToGenFrameConverter_.reset();
       this->actToGenFrameConverter_.reset();
@@ -974,29 +974,29 @@ RTC::ReturnCode_t AutoStabilizer::onExecute(RTC::UniqueId ec_id){
       this->impedanceController_.reset();
       this->fullbodyIKSolver_.reset();
     }
-    AutoStabilizer::execAutoStabilizer(this->mode_, this->gaitParam_, this->dt_, this->footStepGenerator_, this->legCoordsGenerator_, this->refToGenFrameConverter_, this->actToGenFrameConverter_, this->impedanceController_, this->stabilizer_,this->externalForceHandler_, this->fullbodyIKSolver_, this->legManualController_, this->cmdVelGenerator_);
+    ActKinStabilizer::execActKinStabilizer(this->mode_, this->gaitParam_, this->dt_, this->footStepGenerator_, this->legCoordsGenerator_, this->refToGenFrameConverter_, this->actToGenFrameConverter_, this->impedanceController_, this->stabilizer_,this->externalForceHandler_, this->fullbodyIKSolver_, this->legManualController_, this->cmdVelGenerator_);
   }
 
-  AutoStabilizer::writeOutPortData(this->ports_, this->mode_, this->idleToAbcTransitionInterpolator_, this->dt_, this->gaitParam_);
+  ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, this->idleToAbcTransitionInterpolator_, this->dt_, this->gaitParam_);
 
   return RTC::RTC_OK;
 }
 
-RTC::ReturnCode_t AutoStabilizer::onActivated(RTC::UniqueId ec_id){
+RTC::ReturnCode_t ActKinStabilizer::onActivated(RTC::UniqueId ec_id){
   std::lock_guard<std::mutex> guard(this->mutex_);
   std::cerr << "[" << m_profile.instance_name << "] "<< "onActivated(" << ec_id << ")" << std::endl;
   this->mode_.reset();
   this->idleToAbcTransitionInterpolator_.reset(0.0);
   return RTC::RTC_OK;
 }
-RTC::ReturnCode_t AutoStabilizer::onDeactivated(RTC::UniqueId ec_id){
+RTC::ReturnCode_t ActKinStabilizer::onDeactivated(RTC::UniqueId ec_id){
   std::lock_guard<std::mutex> guard(this->mutex_);
   std::cerr << "[" << m_profile.instance_name << "] "<< "onDeactivated(" << ec_id << ")" << std::endl;
   return RTC::RTC_OK;
 }
-RTC::ReturnCode_t AutoStabilizer::onFinalize(){ return RTC::RTC_OK; }
+RTC::ReturnCode_t ActKinStabilizer::onFinalize(){ return RTC::RTC_OK; }
 
-bool AutoStabilizer::goPos(const double& x, const double& y, const double& th){
+bool ActKinStabilizer::goPos(const double& x, const double& y, const double& th){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
     if(std::isfinite(x) && std::isfinite(y) && std::isfinite(th)){
@@ -1010,7 +1010,7 @@ bool AutoStabilizer::goPos(const double& x, const double& y, const double& th){
     return false;
   }
 }
-bool AutoStabilizer::goVelocity(const double& vx, const double& vy, const double& vth){
+bool ActKinStabilizer::goVelocity(const double& vx, const double& vy, const double& vth){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
     if(std::isfinite(vx) && std::isfinite(vy) && std::isfinite(vth)){
@@ -1027,7 +1027,7 @@ bool AutoStabilizer::goVelocity(const double& vx, const double& vy, const double
     return false;
   }
 }
-bool AutoStabilizer::goStop(){
+bool ActKinStabilizer::goStop(){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning() && this->footStepGenerator_.isGoVelocityMode){ // this->footStepGenerator_.isGoVelocityMode時のみ行う. goStopが呼ばれて、staticになる前にgoStopが再度呼ばれることが繰り返されると、止まらないので
     this->cmdVelGenerator_.refCmdVel.setZero();
@@ -1039,13 +1039,13 @@ bool AutoStabilizer::goStop(){
     return false;
   }
 }
-bool AutoStabilizer::jumpTo(const double& x, const double& y, const double& z, const double& ts, const double& tf){
+bool ActKinStabilizer::jumpTo(const double& x, const double& y, const double& z, const double& ts, const double& tf){
   std::lock_guard<std::mutex> guard(this->mutex_);
   return true;
 }
 
-bool AutoStabilizer::setFootSteps(const OpenHRP::AutoStabilizerService::FootstepSequence& fs){
-  OpenHRP::AutoStabilizerService::StepParamSequence sps;
+bool ActKinStabilizer::setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs){
+  actkin_stabilizer::ActKinStabilizerService::StepParamSequence sps;
   sps.length(fs.length());
   for(int i=0;i<fs.length();i++){
     sps[i].step_height = this->footStepGenerator_.defaultStepHeight;
@@ -1055,7 +1055,7 @@ bool AutoStabilizer::setFootSteps(const OpenHRP::AutoStabilizerService::Footstep
   return this->setFootStepsWithParam(fs, sps); // この中でmutexをとるので、setFootSteps関数ではmutexはとらない
 }
 
-bool AutoStabilizer::setFootStepsWithParam(const OpenHRP::AutoStabilizerService::FootstepSequence& fs, const OpenHRP::AutoStabilizerService::StepParamSequence& sps){
+bool ActKinStabilizer::setFootStepsWithParam(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs, const actkin_stabilizer::ActKinStabilizerService::StepParamSequence& sps){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
     std::vector<FootStepGenerator::StepNode> footsteps;
@@ -1090,19 +1090,19 @@ bool AutoStabilizer::setFootStepsWithParam(const OpenHRP::AutoStabilizerService:
     return false;
   }
 }
-void AutoStabilizer::waitFootSteps(){
+void ActKinStabilizer::waitFootSteps(){
   while (this->mode_.isABCRunning() && !this->gaitParam_.isStatic()) usleep(1000);
   usleep(1000);
   return;
 }
 
-bool AutoStabilizer::releaseEmergencyStop(){
+bool ActKinStabilizer::releaseEmergencyStop(){
   std::lock_guard<std::mutex> guard(this->mutex_);
   return true;
 }
 
 
-bool AutoStabilizer::startAutoBalancer(){
+bool ActKinStabilizer::startAutoBalancer(){
   if(this->mode_.setNextTransition(ControlMode::START_ABC)){
     std::cerr << "[" << m_profile.instance_name << "] start auto balancer mode" << std::endl;
     while (this->mode_.now() != ControlMode::MODE_ABC) usleep(1000);
@@ -1113,7 +1113,7 @@ bool AutoStabilizer::startAutoBalancer(){
     return false;
   }
 }
-bool AutoStabilizer::stopAutoBalancer(){
+bool ActKinStabilizer::stopAutoBalancer(){
   if(this->mode_.setNextTransition(ControlMode::STOP_ABC)){
     std::cerr << "[" << m_profile.instance_name << "] stop auto balancer mode" << std::endl;
     while (this->mode_.now() != ControlMode::MODE_IDLE) usleep(1000);
@@ -1124,30 +1124,30 @@ bool AutoStabilizer::stopAutoBalancer(){
     return false;
   }
 }
-bool AutoStabilizer::startStabilizer(void){
+bool ActKinStabilizer::startStabilizer(void){
   if(this->mode_.setNextTransition(ControlMode::START_ST)){
     std::cerr << "[" << m_profile.instance_name << "] start ST" << std::endl;
     while (this->mode_.now() != ControlMode::MODE_ST) usleep(1000);
     usleep(1000);
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
     return false;
   }
 }
-bool AutoStabilizer::stopStabilizer(void){
+bool ActKinStabilizer::stopStabilizer(void){
   if(this->mode_.setNextTransition(ControlMode::STOP_ST)){
     std::cerr << "[" << m_profile.instance_name << "] stop ST" << std::endl;
     while (this->mode_.now() != ControlMode::MODE_ABC) usleep(1000);
     usleep(1000);
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
     return false;
   }
 }
 
-bool AutoStabilizer::startImpedanceController(const std::string& i_name){
+bool ActKinStabilizer::startImpedanceController(const std::string& i_name){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
     for(int i=0;i<this->gaitParam_.eeName.size();i++){
@@ -1163,12 +1163,12 @@ bool AutoStabilizer::startImpedanceController(const std::string& i_name){
     std::cerr << "[" << this->m_profile.instance_name << "] Could not found impedance controller param [" << i_name << "]" << std::endl;
     return false;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
     return false;
   }
 }
 
-bool AutoStabilizer::stopImpedanceController(const std::string& i_name){
+bool ActKinStabilizer::stopImpedanceController(const std::string& i_name){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
     for(int i=0;i<this->gaitParam_.eeName.size();i++){
@@ -1185,11 +1185,11 @@ bool AutoStabilizer::stopImpedanceController(const std::string& i_name){
     std::cerr << "[" << this->m_profile.instance_name << "] Could not found impedance controller param [" << i_name << "]" << std::endl;
     return false;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
     return false;
   }
 }
-bool AutoStabilizer::startWholeBodyMasterSlave(void){
+bool ActKinStabilizer::startWholeBodyMasterSlave(void){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
     if(this->refToGenFrameConverter_.solveFKMode.getGoal() == 0.0){
@@ -1204,11 +1204,11 @@ bool AutoStabilizer::startWholeBodyMasterSlave(void){
     std::cerr << "[" << this->m_profile.instance_name << "] Start WholeBodyMasterSlave" << std::endl;
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
     return false;
   }
 }
-bool AutoStabilizer::stopWholeBodyMasterSlave(void){
+bool ActKinStabilizer::stopWholeBodyMasterSlave(void){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
     if(this->refToGenFrameConverter_.solveFKMode.getGoal() == 1.0){
@@ -1219,12 +1219,12 @@ bool AutoStabilizer::stopWholeBodyMasterSlave(void){
     std::cerr << "[" << this->m_profile.instance_name << "] Stop WholeBodyMasterSlave" << std::endl;
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
     return false;
   }
 }
 
-bool AutoStabilizer::setAutoStabilizerParam(const OpenHRP::AutoStabilizerService::AutoStabilizerParam& i_param){
+bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param){
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   // ignore i_param.ee_name
@@ -1490,7 +1490,7 @@ bool AutoStabilizer::setAutoStabilizerParam(const OpenHRP::AutoStabilizerService
 
   return true;
 }
-bool AutoStabilizer::getAutoStabilizerParam(OpenHRP::AutoStabilizerService::AutoStabilizerParam& i_param) {
+bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param) {
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   i_param.ee_name.length(this->gaitParam_.eeName.size());
@@ -1698,7 +1698,7 @@ bool AutoStabilizer::getAutoStabilizerParam(OpenHRP::AutoStabilizerService::Auto
   return true;
 }
 
-bool AutoStabilizer::getFootStepState(OpenHRP::AutoStabilizerService::FootStepState& i_param) {
+bool ActKinStabilizer::getFootStepState(actkin_stabilizer::ActKinStabilizerService::FootStepState& i_param) {
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   i_param.leg_coords.length(NUM_LEGS);
@@ -1707,12 +1707,12 @@ bool AutoStabilizer::getFootStepState(OpenHRP::AutoStabilizerService::FootStepSt
   i_param.leg_dst_coords.length(NUM_LEGS);
   for(int i=0;i<NUM_LEGS;i++){
     i_param.leg_coords[i].leg = this->gaitParam_.eeName[i].c_str();
-    AutoStabilizer::copyEigenCoords2FootStep(this->gaitParam_.genCoords[i].value(), i_param.leg_coords[i]);
+    ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.genCoords[i].value(), i_param.leg_coords[i]);
     i_param.support_leg[i] = this->gaitParam_.footstepNodesList[0].isSupportPhase[i];
     i_param.leg_src_coords[i].leg = this->gaitParam_.eeName[i].c_str();
-    AutoStabilizer::copyEigenCoords2FootStep(this->gaitParam_.srcCoords[i], i_param.leg_src_coords[i]);
+    ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.srcCoords[i], i_param.leg_src_coords[i]);
     i_param.leg_dst_coords[i].leg = this->gaitParam_.eeName[i].c_str();
-    AutoStabilizer::copyEigenCoords2FootStep(this->gaitParam_.footstepNodesList[0].dstCoords[i], i_param.leg_dst_coords[i]);
+    ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.footstepNodesList[0].dstCoords[i], i_param.leg_dst_coords[i]);
   }
   // 現在支持脚、または現在遊脚で次支持脚になる脚の、dstCoordsの中間. 水平
   std::vector<double> weights(NUM_LEGS, 0.0);
@@ -1727,7 +1727,7 @@ bool AutoStabilizer::getFootStepState(OpenHRP::AutoStabilizerService::FootStepSt
   if(weights[RLEG] == 1.0 && weights[LLEG] == 1.0) i_param.dst_foot_midcoords.leg = "both";
   else if(weights[RLEG] == 1.0) i_param.dst_foot_midcoords.leg = "rleg";
   else if(weights[LLEG] == 1.0) i_param.dst_foot_midcoords.leg = "lleg";
-  AutoStabilizer::copyEigenCoords2FootStep(mathutil::orientCoordToAxis(mathutil::calcMidCoords(this->gaitParam_.footstepNodesList[0].dstCoords, weights), cnoid::Vector3::UnitZ()), i_param.dst_foot_midcoords);
+  ActKinStabilizer::copyEigenCoords2FootStep(mathutil::orientCoordToAxis(mathutil::calcMidCoords(this->gaitParam_.footstepNodesList[0].dstCoords, weights), cnoid::Vector3::UnitZ()), i_param.dst_foot_midcoords);
   i_param.is_manual_control_mode.length(NUM_LEGS);
   for(int i=0;i<NUM_LEGS; i++) {
     i_param.is_manual_control_mode[i] = (this->gaitParam_.isManualControlMode[i].getGoal() == 1.0);
@@ -1739,7 +1739,7 @@ bool AutoStabilizer::getFootStepState(OpenHRP::AutoStabilizerService::FootStepSt
   return true;
 }
 
-bool AutoStabilizer::getProperty(const std::string& key, std::string& ret) {
+bool ActKinStabilizer::getProperty(const std::string& key, std::string& ret) {
   if (this->getProperties().hasKey(key.c_str())) {
     ret = std::string(this->getProperties()[key.c_str()]);
   } else if (this->m_pManager->getConfig().hasKey(key.c_str())) { // 引数 -o で与えたプロパティを捕捉
@@ -1752,7 +1752,7 @@ bool AutoStabilizer::getProperty(const std::string& key, std::string& ret) {
 }
 
 // static function
-void AutoStabilizer::copyEigenCoords2FootStep(const cnoid::Position& in_fs, OpenHRP::AutoStabilizerService::Footstep& out_fs){
+void ActKinStabilizer::copyEigenCoords2FootStep(const cnoid::Position& in_fs, actkin_stabilizer::ActKinStabilizerService::Footstep& out_fs){
   out_fs.pos.length(3);
   for(int j=0;j<3;j++) out_fs.pos[j] = in_fs.translation()[j];
   out_fs.rot.length(4);
@@ -1761,8 +1761,8 @@ void AutoStabilizer::copyEigenCoords2FootStep(const cnoid::Position& in_fs, Open
 }
 
 extern "C"{
-    void AutoStabilizerInit(RTC::Manager* manager) {
-        RTC::Properties profile(AutoStabilizer_spec);
-        manager->registerFactory(profile, RTC::Create<AutoStabilizer>, RTC::Delete<AutoStabilizer>);
+    void ActKinStabilizerInit(RTC::Manager* manager) {
+        RTC::Properties profile(ActKinStabilizer_spec);
+        manager->registerFactory(profile, RTC::Create<ActKinStabilizer>, RTC::Delete<ActKinStabilizer>);
     }
 };

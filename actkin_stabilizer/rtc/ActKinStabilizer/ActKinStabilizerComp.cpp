@@ -10,15 +10,15 @@
 #include <rtm/Manager.h>
 #include <iostream>
 #include <string>
-#include "AutoStabilizer.h"
+#include "ActKinStabilizer.h"
 
 void MyModuleInit(RTC::Manager* manager)
 {
-  AutoStabilizerInit(manager);
+  ActKinStabilizerInit(manager);
   RTC::RtcBase* comp;
 
   // Create a component
-  comp = manager->createComponent("AutoStabilizer");
+  comp = manager->createComponent("ActKinStabilizer");
 
   return;
 }

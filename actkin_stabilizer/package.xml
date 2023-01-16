@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>actkin_stabilizer</name>
-  <version>0.3.0</version>
+  <version>0.0.0</version>
   <description>The actkin_stabilizer package</description>
 
   <maintainer email="hiraoka@jsk.imi.i.u-tokyuo.ac.jp">Naoki-Hiraoka</maintainer>
