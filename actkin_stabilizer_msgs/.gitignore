@@ -1,6 +1,0 @@
-*~
-*.stp
-*#
-msg/actkin_stabilizer_msgs_*
-srv/actkin_stabilizer_msgs_*
-src_gen/*

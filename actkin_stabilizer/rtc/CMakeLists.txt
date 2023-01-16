@@ -1,1 +1,2 @@
-add_subdirectory(AutoStabilizer)
+#add_subdirectory(AutoStabilizer)
+add_subdirectory(PrimitiveStateROSBridge)

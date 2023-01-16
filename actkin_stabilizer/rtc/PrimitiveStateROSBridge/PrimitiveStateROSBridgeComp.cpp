@@ -1,13 +1,13 @@
 #include <rtm/Manager.h>
-#include "AutoStabilizerROSBridge.h"
+#include "PrimitiveStateROSBridge.h"
 
 void MyModuleInit(RTC::Manager* manager)
 {
-  AutoStabilizerROSBridgeInit(manager);
+  PrimitiveStateROSBridgeInit(manager);
   RTC::RtcBase* comp;
 
   // Create a component
-  comp = manager->createComponent(("AutoStabilizerROSBridge?instance_name="+ros::this_node::getName().substr(1)).c_str()); // skip root name space for OpenRTM instance name
+  comp = manager->createComponent(("PrimitiveStateROSBridge?instance_name="+ros::this_node::getName().substr(1)).c_str()); // skip root name space for OpenRTM instance name
 
   return;
 
@@ -17,7 +17,7 @@ int main (int argc, char** argv)
 {
   RTC::Manager* manager;
   manager = RTC::Manager::init(argc, argv);
-  ros::init(argc, argv, "AutoStabilizerROSBridge", ros::init_options::NoSigintHandler);
+  ros::init(argc, argv, "PrimitiveStateROSBridge", ros::init_options::NoSigintHandler);
 
   // Initialize manager
   manager->init(argc, argv);

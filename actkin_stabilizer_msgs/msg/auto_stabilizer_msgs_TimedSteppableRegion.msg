@@ -1,2 +1,0 @@
-rtmbuild2/RTC_Time tm
-auto_stabilizer_msgs_SteppableRegionIdl data

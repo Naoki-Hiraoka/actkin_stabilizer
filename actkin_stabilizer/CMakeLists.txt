@@ -43,4 +43,4 @@ rtmbuild2_genbridge()
 ## Build ##
 ###########
 
-#add_subdirectory(rtc)
+add_subdirectory(rtc)

@@ -49,7 +49,7 @@ target_link_libraries(AutoStabilizer
   ${catkin_LIBRARIES}
   ${CHOREONOID_BODY_LIBRARIES}
   ${openrtm_aist_LIBRARIES}
-  ${${PROJECT_NAME}_IDLLIBRARY_DIRS}
+  ${${PROJECT_NAME}_IDLLIBRARY_DIRS} # generated from idl in this package
   RobotHardwareServiceSkel RobotHardwareServiceStub
   )
 set_target_properties(AutoStabilizer PROPERTIES PREFIX "")
