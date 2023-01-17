@@ -41,7 +41,7 @@ public:
   std::vector<cpp_filters::TwoPointInterpolator<double> > ikdqWeight; // 要素数と順序はrobot->numJoints()と同じ. 0より大きい. 各関節の変位に対する重みの比. default 1. 動かしたくない関節は大きくする. 全く動かしたくないなら、controllable_jointsを使うこと. fullbody ik用
 
   void init(const GaitParam& gaitParam, cnoid::BodyPtr& actRobotTqc, cnoid::BodyPtr& genRobot){
-    for(int i=0;i<gaitParam.eeName.size();i++){
+    for(int i=0;i<gaitParam.endEffectors.size();i++){
       ee_K.push_back((cnoid::Vector6() << 50, 50, 50, 20, 20, 20).finished());
       ee_D.push_back((cnoid::Vector6() << 10, 10, 10, 10, 10, 10).finished());
     }
@@ -57,7 +57,7 @@ public:
 
     aikdqWeight.resize(actRobotTqc->numJoints(), cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::HOFFARBIB));
     aikEEPositionConstraint.clear();
-    for(int i=0;i<gaitParam.eeName.size();i++) aikEEPositionConstraint.push_back(std::make_shared<aik_constraint::PositionConstraint>());
+    for(int i=0;i<gaitParam.endEffectors.size();i++) aikEEPositionConstraint.push_back(std::make_shared<aik_constraint::PositionConstraint>());
     aikRefJointAngleConstraint.clear();
     for(int i=0;i<actRobotTqc->numJoints();i++) aikRefJointAngleConstraint.push_back(std::make_shared<aik_constraint::JointAngleConstraint>());
     aikJointLimitConstraint.clear();
@@ -66,7 +66,7 @@ public:
     // for(int i=0;i<gaitParam.selfCollision.size();i++) selfCollisionConstraint.push_back(std::make_shared<aik_constraint::ClientCollisionConstraint>());
 
     ikEEPositionConstraint.clear();
-    for(int i=0;i<gaitParam.eeName.size();i++) ikEEPositionConstraint.push_back(std::make_shared<IK::PositionConstraint>());
+    for(int i=0;i<gaitParam.endEffectors.size();i++) ikEEPositionConstraint.push_back(std::make_shared<IK::PositionConstraint>());
     ikRefJointAngleConstraint.clear();
     for(int i=0;i<genRobot->numJoints();i++) ikRefJointAngleConstraint.push_back(std::make_shared<IK::JointAngleConstraint>());
     ikJointVelocityConstraint.clear();
@@ -100,7 +100,7 @@ protected:
 
   // 内部にヤコビアンの情報をキャッシュするが、クリアしなくても副作用はあまりない
   // ik
-  mutable std::vector<std::shared_ptr<IK::PositionConstraint> > ikEEPositionConstraint; // 要素数と順序はeeNameと同じ.
+  mutable std::vector<std::shared_ptr<IK::PositionConstraint> > ikEEPositionConstraint; // 要素数と順序はendEffectorsと同じ.
   mutable std::vector<std::shared_ptr<IK::JointAngleConstraint> > ikRefJointAngleConstraint; // 要素数と順序はrobot->numJoints()と同じ
   mutable std::shared_ptr<IK::PositionConstraint> ikRootPositionConstraint = std::make_shared<IK::PositionConstraint>();
   mutable std::shared_ptr<IK::COMConstraint> ikComConstraint = std::make_shared<IK::COMConstraint>();
@@ -110,7 +110,7 @@ protected:
   mutable std::vector<std::shared_ptr<IK::ClientCollisionConstraint> > ikSelfCollisionConstraint;
   mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > ikTasks;
   // aik
-  mutable std::vector<std::shared_ptr<aik_constraint::PositionConstraint> > aikEEPositionConstraint; // 要素数と順序はeeNameと同じ.
+  mutable std::vector<std::shared_ptr<aik_constraint::PositionConstraint> > aikEEPositionConstraint; // 要素数と順序はendEffectorsと同じ.
   mutable std::vector<std::shared_ptr<aik_constraint::JointAngleConstraint> > aikRefJointAngleConstraint; // 要素数と順序はrobot->numJoints()と同じ
   mutable std::shared_ptr<aik_constraint::PositionConstraint> aikRootPositionConstraint = std::make_shared<aik_constraint::PositionConstraint>();
   mutable std::shared_ptr<aik_constraint::COMConstraint> aikComConstraint = std::make_shared<aik_constraint::COMConstraint>();

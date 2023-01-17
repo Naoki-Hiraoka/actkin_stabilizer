@@ -232,8 +232,8 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     }
 
     // 0番目が右脚. 1番目が左脚. という仮定がある.
-    if(this->gaitParam_.eeName.size() < NUM_LEGS || this->gaitParam_.eeName[RLEG] != "rleg" || this->gaitParam_.eeName[LLEG] != "lleg"){
-      std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << " this->gaitParam_.eeName.size() < 2 || this->gaitParams.eeName[0] != \"rleg\" || this->gaitParam_.eeName[1] != \"lleg\" not holds" << "\x1b[39m" << std::endl;
+    if(this->gaitParam_.endEffectors.size() < NUM_LEGS || this->gaitParam_.endEffectors[RLEG].name != "rleg" || this->gaitParam_.endEffectors[LLEG].name != "lleg"){
+      std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << " this->gaitParam_.endEffectors.size() < 2 || this->gaitParams.endEffectors[0].name != \"rleg\" || this->gaitParam_.endEffectors[1].name != \"lleg\" not holds" << "\x1b[39m" << std::endl;
       return RTC::RTC_ERROR;
     }
   }
@@ -241,10 +241,10 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   {
     // generate LegParams
     // init-poseのとき両脚が同一平面上で, Y軸方向に横に並んでいるという仮定がある
-    cnoid::Position defautFootMidCoords = mathutil::calcMidCoords(std::vector<cnoid::Position>{cnoid::Position(this->gaitParam_.refRobot->link(this->gaitParam_.eeParentLink[RLEG])->T()*this->gaitParam_.eeLocalT[RLEG]),cnoid::Position(this->gaitParam_.refRobot->link(this->gaitParam_.eeParentLink[LLEG])->T()*this->gaitParam_.eeLocalT[LLEG])},
+    cnoid::Position defautFootMidCoords = mathutil::calcMidCoords(std::vector<cnoid::Position>{cnoid::Position(this->gaitParam_.refRobot->link(this->gaitParam_.endEffectors[RLEG].parentLink)->T()*this->gaitParam_.endEffectors[RLEG].localT),cnoid::Position(this->gaitParam_.refRobot->link(this->gaitParam_.endEffectors[LLEG].parentLink)->T()*this->gaitParam_.endEffectors[LLEG].localT)},
                                                             std::vector<double>{1,1});
     for(int i=0; i<NUM_LEGS; i++){
-      cnoid::Position defaultPose = this->gaitParam_.refRobot->link(this->gaitParam_.eeParentLink[i])->T()*this->gaitParam_.eeLocalT[i];
+      cnoid::Position defaultPose = this->gaitParam_.refRobot->link(this->gaitParam_.endEffectors[i].parentLink)->T()*this->gaitParam_.endEffectors[i].localT;
       cnoid::Vector3 defaultTranslatePos = defautFootMidCoords.inverse() * defaultPose.translation();
       defaultTranslatePos[0] = 0.0;
       defaultTranslatePos[2] = 0.0;
@@ -256,10 +256,10 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     // add more ports (ロボットモデルやEndEffectorの情報を使って)
 
     // 各EndEffectorにつき、ref<name>WrenchInというInPortをつくる
-    this->ports_.m_refEEWrenchIn_.resize(this->gaitParam_.eeName.size());
-    this->ports_.m_refEEWrench_.resize(this->gaitParam_.eeName.size());
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      std::string name = "ref"+this->gaitParam_.eeName[i]+"WrenchIn";
+    this->ports_.m_refEEWrenchIn_.resize(this->gaitParam_.endEffectors.size());
+    this->ports_.m_refEEWrench_.resize(this->gaitParam_.endEffectors.size());
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
+      std::string name = "ref"+this->gaitParam_.endEffectors[i].name+"WrenchIn";
       this->ports_.m_refEEWrenchIn_[i] = std::make_unique<RTC::InPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_refEEWrench_[i]);
       this->addInPort(name.c_str(), *(this->ports_.m_refEEWrenchIn_[i]));
     }
@@ -275,37 +275,37 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     }
 
     // 各EndEffectorにつき、ref<name>PoseInというInPortをつくる
-    this->ports_.m_refEEPoseIn_.resize(this->gaitParam_.eeName.size());
-    this->ports_.m_refEEPose_.resize(this->gaitParam_.eeName.size());
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      std::string name = "ref"+this->gaitParam_.eeName[i]+"PoseIn";
+    this->ports_.m_refEEPoseIn_.resize(this->gaitParam_.endEffectors.size());
+    this->ports_.m_refEEPose_.resize(this->gaitParam_.endEffectors.size());
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
+      std::string name = "ref"+this->gaitParam_.endEffectors[i].name+"PoseIn";
       this->ports_.m_refEEPoseIn_[i] = std::make_unique<RTC::InPort<RTC::TimedPose3D> >(name.c_str(), this->ports_.m_refEEPose_[i]);
       this->addInPort(name.c_str(), *(this->ports_.m_refEEPoseIn_[i]));
     }
 
     // 各EndEffectorにつき、act<name>PoseOutというOutPortをつくる
-    this->ports_.m_actEEPoseOut_.resize(this->gaitParam_.eeName.size());
-    this->ports_.m_actEEPose_.resize(this->gaitParam_.eeName.size());
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      std::string name = "act"+this->gaitParam_.eeName[i]+"PoseOut";
+    this->ports_.m_actEEPoseOut_.resize(this->gaitParam_.endEffectors.size());
+    this->ports_.m_actEEPose_.resize(this->gaitParam_.endEffectors.size());
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
+      std::string name = "act"+this->gaitParam_.endEffectors[i].name+"PoseOut";
       this->ports_.m_actEEPoseOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedPose3D> >(name.c_str(), this->ports_.m_actEEPose_[i]);
       this->addOutPort(name.c_str(), *(this->ports_.m_actEEPoseOut_[i]));
     }
 
     // 各EndEffectorにつき、tgt<name>WrenchOutというOutPortをつくる
-    this->ports_.m_tgtEEWrenchOut_.resize(this->gaitParam_.eeName.size());
-    this->ports_.m_tgtEEWrench_.resize(this->gaitParam_.eeName.size());
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      std::string name = "tgt"+this->gaitParam_.eeName[i]+"WrenchOut";
+    this->ports_.m_tgtEEWrenchOut_.resize(this->gaitParam_.endEffectors.size());
+    this->ports_.m_tgtEEWrench_.resize(this->gaitParam_.endEffectors.size());
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
+      std::string name = "tgt"+this->gaitParam_.endEffectors[i].name+"WrenchOut";
       this->ports_.m_tgtEEWrenchOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_tgtEEWrench_[i]);
       this->addOutPort(name.c_str(), *(this->ports_.m_tgtEEWrenchOut_[i]));
     }
 
     // 各EndEffectorにつき、act<name>WrenchOutというOutPortをつくる
-    this->ports_.m_actEEWrenchOut_.resize(this->gaitParam_.eeName.size());
-    this->ports_.m_actEEWrench_.resize(this->gaitParam_.eeName.size());
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      std::string name = "act"+this->gaitParam_.eeName[i]+"WrenchOut";
+    this->ports_.m_actEEWrenchOut_.resize(this->gaitParam_.endEffectors.size());
+    this->ports_.m_actEEWrench_.resize(this->gaitParam_.endEffectors.size());
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
+      std::string name = "act"+this->gaitParam_.endEffectors[i].name+"WrenchOut";
       this->ports_.m_actEEWrenchOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_actEEWrench_[i]);
       this->addOutPort(name.c_str(), *(this->ports_.m_actEEWrenchOut_[i]));
     }
@@ -314,12 +314,12 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
 
   {
     // init ActToGenFrameConverter
-    this->actToGenFrameConverter_.eeForceSensor.resize(this->gaitParam_.eeName.size());
+    this->actToGenFrameConverter_.eeForceSensor.resize(this->gaitParam_.endEffectors.size());
     cnoid::DeviceList<cnoid::ForceSensor> forceSensors(this->gaitParam_.refRobotRaw->devices());
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
       // 各EndEffectorsから親リンク側に遡っていき、最初に見つかったForceSensorをEndEffectorに対応付ける. 以後、ForceSensorの値を座標変換したものがEndEffectorが受けている力とみなされる. 見つからなければ受けている力は常に0とみなされる
       std::string forceSensor = "";
-      cnoid::LinkPtr link = this->gaitParam_.refRobotRaw->link(this->gaitParam_.eeParentLink[i]);
+      cnoid::LinkPtr link = this->gaitParam_.refRobotRaw->link(this->gaitParam_.endEffectors[i].parentLink);
       bool found = false;
       while (link != nullptr && found == false) {
         for (size_t j = 0; j < forceSensors.size(); j++) {
@@ -335,7 +335,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   }
 
   // init ImpedanceController
-  for(int i=0;i<this->gaitParam_.eeName.size();i++) this->impedanceController_.push_backEE();
+  for(int i=0;i<this->gaitParam_.endEffectors.size();i++) this->impedanceController_.push_backEE();
 
   // init Stabilizer
   this->stabilizer_.init(this->gaitParam_, this->gaitParam_.actRobotTqc, this->gaitParam_.genRobot);
@@ -808,7 +808,7 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
 
   // actEEPose actEEWrench (for wholebodymasterslave)
   if(mode.isABCRunning()){
-    for(int i=0;i<gaitParam.eeName.size();i++){
+    for(int i=0;i<gaitParam.endEffectors.size();i++){
       ports.m_actEEPose_[i].tm = ports.m_qRef_.tm;
       ports.m_actEEPose_[i].data.position.x = gaitParam.actEEPose[i].translation()[0];
       ports.m_actEEPose_[i].data.position.y = gaitParam.actEEPose[i].translation()[1];
@@ -819,7 +819,7 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
       ports.m_actEEPose_[i].data.orientation.y = rpy[2];
       ports.m_actEEPoseOut_[i]->write();
     }
-    for(int i=0;i<gaitParam.eeName.size();i++){
+    for(int i=0;i<gaitParam.endEffectors.size();i++){
       ports.m_actEEWrench_[i].tm = ports.m_qRef_.tm;
       ports.m_actEEWrench_[i].data.length(6);
       for(int j=0;j<6;j++) ports.m_actEEWrench_[i].data[j] = gaitParam.actEEWrench[i][j];
@@ -930,7 +930,7 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
       ports.m_cpViewerLog_.data[i] = gaitParam.debugData.cpViewerLog[i];
     }
     ports.m_cpViewerLogOut_.write();
-    for(int i=0;i<gaitParam.eeName.size();i++){
+    for(int i=0;i<gaitParam.endEffectors.size();i++){
       ports.m_tgtEEWrench_[i].tm = ports.m_qRef_.tm;
       ports.m_tgtEEWrench_[i].data.length(6);
       for(int j=0;j<6;j++) ports.m_tgtEEWrench_[i].data[j] = gaitParam.debugData.stEETargetWrench[i][j];
@@ -1141,8 +1141,8 @@ bool ActKinStabilizer::stopStabilizer(void){
 bool ActKinStabilizer::startImpedanceController(const std::string& i_name){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      if(this->gaitParam_.eeName[i] != i_name) continue;
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
+      if(this->gaitParam_.endEffectors[i].name != i_name) continue;
       if(this->impedanceController_.isImpedanceMode[i]) {
         std::cerr << "[" << this->m_profile.instance_name << "] Impedance control [" << i_name << "] is already started" << std::endl;
         return false;
@@ -1162,8 +1162,8 @@ bool ActKinStabilizer::startImpedanceController(const std::string& i_name){
 bool ActKinStabilizer::stopImpedanceController(const std::string& i_name){
   std::lock_guard<std::mutex> guard(this->mutex_);
   if(this->mode_.isABCRunning()){
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
-      if(this->gaitParam_.eeName[i] != i_name) continue;
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
+      if(this->gaitParam_.endEffectors[i].name != i_name) continue;
       if(!this->impedanceController_.isImpedanceMode[i]) {
         std::cerr << "[" << this->m_profile.instance_name << "] Impedance control [" << i_name << "] is already stopped" << std::endl;
         return false;
@@ -1305,17 +1305,17 @@ bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinS
   this->externalForceHandler_.disturbanceCompensationStepNum = std::max(i_param.disturbance_compensation_step_num, 1);
   this->externalForceHandler_.disturbanceCompensationLimit = std::max(i_param.disturbance_compensation_limit, 0.0);
 
-  if(i_param.impedance_M_p.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_D_p.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_K_p.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_M_r.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_D_r.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_K_r.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_force_gain.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_moment_gain.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_pos_compensation_limit.length() == this->gaitParam_.eeName.size() &&
-     i_param.impedance_rot_compensation_limit.length() == this->gaitParam_.eeName.size()){
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
+  if(i_param.impedance_M_p.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_D_p.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_K_p.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_M_r.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_D_r.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_K_r.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_force_gain.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_moment_gain.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_pos_compensation_limit.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.impedance_rot_compensation_limit.length() == this->gaitParam_.endEffectors.size()){
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
       if(i_param.impedance_M_p[i].length() == 3 &&
          i_param.impedance_D_p[i].length() == 3 &&
          i_param.impedance_K_p[i].length() == 3 &&
@@ -1348,8 +1348,8 @@ bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinS
   {
     std::vector<double> grasplessManipArm;
     for(int i=0;i<i_param.graspless_manip_arm.length();i++){
-      for(int j=0;j<this->gaitParam_.eeName.size();j++){
-        if(this->gaitParam_.eeName[j] == std::string(i_param.graspless_manip_arm[i])){
+      for(int j=0;j<this->gaitParam_.endEffectors.size();j++){
+        if(this->gaitParam_.endEffectors[j].name == std::string(i_param.graspless_manip_arm[i])){
           grasplessManipArm.push_back(j);
           break;
         }
@@ -1438,9 +1438,9 @@ bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinS
   this->legCoordsGenerator_.previewStepNum = std::max(i_param.preview_step_num, 2);
   this->legCoordsGenerator_.footGuidedBalanceTime = std::max(i_param.footguided_balance_time, 0.01);
 
-  if(i_param.ee_p.length() == this->gaitParam_.eeName.size() &&
-     i_param.ee_d.length() == this->gaitParam_.eeName.size()){
-    for(int i=0;i<this->gaitParam_.eeName.size();i++){
+  if(i_param.ee_p.length() == this->gaitParam_.endEffectors.size() &&
+     i_param.ee_d.length() == this->gaitParam_.endEffectors.size()){
+    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
       if(i_param.ee_p[i].length() == this->stabilizer_.ee_K[i].size() &&
          i_param.ee_d[i].length() == this->stabilizer_.ee_D[i].size()){
         for(int j=0;j<this->stabilizer_.ee_K[i].size();j++){
@@ -1498,8 +1498,8 @@ bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinS
 bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param) {
   std::lock_guard<std::mutex> guard(this->mutex_);
 
-  i_param.ee_name.length(this->gaitParam_.eeName.size());
-  for(int i=0;i<this->gaitParam_.eeName.size();i++) i_param.ee_name[i] = this->gaitParam_.eeName[i].c_str();
+  i_param.ee_name.length(this->gaitParam_.endEffectors.size());
+  for(int i=0;i<this->gaitParam_.endEffectors.size();i++) i_param.ee_name[i] = this->gaitParam_.endEffectors[i].name.c_str();
   std::vector<std::string> controllable_joints;
   for(int i=0;i<this->gaitParam_.jointControllable.size();i++) if(this->gaitParam_.jointControllable[i]) controllable_joints.push_back(this->gaitParam_.genRobot->joint(i)->name());
   i_param.controllable_joints.length(controllable_joints.size());
@@ -1548,17 +1548,17 @@ bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabili
   i_param.disturbance_compensation_step_num = this->externalForceHandler_.disturbanceCompensationStepNum;
   i_param.disturbance_compensation_limit = this->externalForceHandler_.disturbanceCompensationLimit;
 
-  i_param.impedance_M_p.length(this->gaitParam_.eeName.size());
-  i_param.impedance_D_p.length(this->gaitParam_.eeName.size());
-  i_param.impedance_K_p.length(this->gaitParam_.eeName.size());
-  i_param.impedance_M_r.length(this->gaitParam_.eeName.size());
-  i_param.impedance_D_r.length(this->gaitParam_.eeName.size());
-  i_param.impedance_K_r.length(this->gaitParam_.eeName.size());
-  i_param.impedance_force_gain.length(this->gaitParam_.eeName.size());
-  i_param.impedance_moment_gain.length(this->gaitParam_.eeName.size());
-  i_param.impedance_pos_compensation_limit.length(this->gaitParam_.eeName.size());
-  i_param.impedance_rot_compensation_limit.length(this->gaitParam_.eeName.size());
-  for(int i=0;i<this->gaitParam_.eeName.size();i++){
+  i_param.impedance_M_p.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_D_p.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_K_p.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_M_r.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_D_r.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_K_r.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_force_gain.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_moment_gain.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_pos_compensation_limit.length(this->gaitParam_.endEffectors.size());
+  i_param.impedance_rot_compensation_limit.length(this->gaitParam_.endEffectors.size());
+  for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
     i_param.impedance_M_p[i].length(3);
     i_param.impedance_D_p[i].length(3);
     i_param.impedance_K_p[i].length(3);
@@ -1586,7 +1586,7 @@ bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabili
   i_param.graspless_manip_mode = this->cmdVelGenerator_.isGraspLessManipMode;
   i_param.graspless_manip_arm.length(this->cmdVelGenerator_.graspLessManipArm.size());
   for(int i=0;i<this->cmdVelGenerator_.graspLessManipArm.size();i++){
-    i_param.graspless_manip_arm[i] = this->gaitParam_.eeName[this->cmdVelGenerator_.graspLessManipArm[i]].c_str();
+    i_param.graspless_manip_arm[i] = this->gaitParam_.endEffectors[this->cmdVelGenerator_.graspLessManipArm[i]].name.c_str();
   }
   i_param.graspless_manip_time_const.length(3);
   for(int i=0;i<3;i++){
@@ -1662,9 +1662,9 @@ bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabili
   i_param.preview_step_num = this->legCoordsGenerator_.previewStepNum;
   i_param.footguided_balance_time = this->legCoordsGenerator_.footGuidedBalanceTime;
 
-  i_param.ee_p.length(this->gaitParam_.eeName.size());
-  i_param.ee_d.length(this->gaitParam_.eeName.size());
-  for(int i=0;i<this->gaitParam_.eeName.size();i++){
+  i_param.ee_p.length(this->gaitParam_.endEffectors.size());
+  i_param.ee_d.length(this->gaitParam_.endEffectors.size());
+  for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
     i_param.ee_p[i].length(6);
     i_param.ee_d[i].length(6);
     for(int j=0;j<6;j++){
@@ -1718,12 +1718,12 @@ bool ActKinStabilizer::getFootStepState(actkin_stabilizer::ActKinStabilizerServi
   i_param.leg_src_coords.length(NUM_LEGS);
   i_param.leg_dst_coords.length(NUM_LEGS);
   for(int i=0;i<NUM_LEGS;i++){
-    i_param.leg_coords[i].leg = this->gaitParam_.eeName[i].c_str();
+    i_param.leg_coords[i].leg = this->gaitParam_.endEffectors[i].name.c_str();
     ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.genCoords[i].value(), i_param.leg_coords[i]);
     i_param.support_leg[i] = this->gaitParam_.footstepNodesList[0].isSupportPhase[i];
-    i_param.leg_src_coords[i].leg = this->gaitParam_.eeName[i].c_str();
+    i_param.leg_src_coords[i].leg = this->gaitParam_.endEffectors[i].name.c_str();
     ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.srcCoords[i], i_param.leg_src_coords[i]);
-    i_param.leg_dst_coords[i].leg = this->gaitParam_.eeName[i].c_str();
+    i_param.leg_dst_coords[i].leg = this->gaitParam_.endEffectors[i].name.c_str();
     ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.footstepNodesList[0].dstCoords[i], i_param.leg_dst_coords[i]);
   }
   // 現在支持脚、または現在遊脚で次支持脚になる脚の、dstCoordsの中間. 水平

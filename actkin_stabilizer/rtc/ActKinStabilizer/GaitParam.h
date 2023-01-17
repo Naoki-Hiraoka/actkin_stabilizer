@@ -12,16 +12,68 @@
 
 enum leg_enum{RLEG=0, LLEG=1, NUM_LEGS=2};
 
+class PositionEx {
+  cnoid::Position pose = cnoid::Position::Identity();
+  cnoid::Vector6 vel = cnoid::Vector6::Zero();
+  cnoid::Vector6 acc = cnoid::Vector6::Zero();
+  cnoid::Vector6 wrench = cnoid::Vector6::Zero();
+};
+
+class EndEffector {
+  // このクラスのメンバ変数は、全てfiniteである(nanやinfが無い)ことが仮定されている. 外部から値をセットするときには、finiteでない値を入れないようにすること
+public:
+  // constaint parameter (NOT_CARED時にしか変更不可)
+
+  std::string name = "";
+  std::string parentLink = ""; // 親リンク. 必ずrobot->link(parentLink)がnullptrではないことを約束する. そのため、毎回robot->link(parentLink)がnullptrかをチェックしなくても良い
+  cnoid::Position localT = cnoid::Position::Identity(); // Parent Link Frame
+
+  std::string forceSensor = ""; // センサ名. actualのForceSensorの値を座標変換したものがEndEffectorが受けている力とみなされる. forceSensorが""ならば受けている力は常に0とみなされる. forceSensorが""で無いならばrobot->findDevice<cnoid::ForceSensor>(forceSensor)がnullptrでは無いことを約束するので、毎回nullptrかをチェックしなくても良い
+
+  cnoid::Vector6 Kp = (cnoid::Vector6() << 50, 50, 50, 20, 20, 20).finished(); // endeffector frame. 分解加速度制御用. 0以上
+  cnoid::Vector6 Dp = (cnoid::Vector6() << 10, 10, 10, 10, 10, 10).finished(); // endeffector frame. 分解加速度制御用. 0以上
+  cnoid::Vector6 Kw = (cnoid::Vector6() <<  0,  0,  0,  0,  0,  0).finished(); // endeffector frame. passivity用. 0以上
+  cnoid::Vector6 Dw = (cnoid::Vector6() <<  0,  0,  0,  0,  0,  0).finished(); // endeffector frame. passivity用. 0以上
+  double odomWeight = 1.0; // 0より大きい.1以下
+  Eigen::SparseMatrix<double,Eigen::RowMajor> wrenchC = Eigen::SparseMatrix<double,Eigen::RowMajor>(0,6);  //wrench の制約. ee frame. ee origin
+  cnoid::VectorX wrenchld = cnoid::VectorX(0);
+  cnoid::VectorX wrenchud = cnoid::VectorX(0);
+
+public:
+  // 変数. 制御処理中で変更される.
+
+  enum class mode_enum{KEEP_PREV, // to controll only
+                       NOT_CARED,
+                       REL_HRPSYS_ODOM,
+                       REL_COG,
+                       // REL_LINK,
+                       TO_CONTACT,
+                       TO_AIR,
+                       CONTACT};
+  mode_enum mode = mode_enum::NOT_CARED;
+  unsigned long modeId = 0; // 今のmodeId未満のmodeIdが書かれた指令は無視する.
+  cnoid::Vector6 ikGain = cnoid::Vector6::Ones(); // endeffector frame. 0 or 1. 分解加速度制御のIKで考慮するか (非接触時のみ)
+  cnoid::Vector6 passivityGain = cnoid::Vector6::Zero(); // endeffector frame. 0 or 1. passivityに基づき力を出力するか (非接触時のみ)
+
+  cpp_filters::TwoPointInterpolatorSE3 refPoseLocal = cpp_filters::TwoPointInterpolatorSE3(cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB); // 座標系はmodeによって決まる
+  cpp_filters::TwoPointInterpolator<cnoid::Vector6> refWrenchLocal = cpp_filters::TwoPointInterpolator<cnoid::Vector6>(cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(), cpp_filters::HOFFARBIB); // 座標系はmodeによって決まる
+  std::vector<std::pair<PositionEx, double> > refTrajectoryLocal; // first: 座標系はmodeによって決まる. second: time_from_prev. 0,1,2,3,4...と目標軌道があるときに、0がrefPoseLocalとrefWrenchLocalになり、1以降がここに入る
+  PositionEx refPose; // generate frame. endeffector origin. refPoseLocalとrefWrenchLocalを座標変換したもの
+
+  cnoid::Position actPose = cnoid::Position::Identity(); // generate frame.
+};
+
 class GaitParam {
   // このクラスのメンバ変数は、全てfiniteである(nanやinfが無い)ことが仮定されている. 外部から値をセットするときには、finiteでない値を入れないようにすること
 
   // robotは、rootLinkがFreeJointでなければならない
+
+public:
+  // 中心部
+  std::vector<EndEffector> endEffectors; // 要素数2以上. 0番目がrleg, 1番目がllegという名前である必要がある.
+
 public:
   // constant parameter
-  std::vector<std::string> eeName; // constant. 要素数2以上. 0番目がrleg, 1番目がllegという名前である必要がある
-  std::vector<std::string> eeParentLink; // constant. 要素数と順序はeeNameと同じ. 必ずrobot->link(parentLink)がnullptrではないことを約束する. そのため、毎回robot->link(parentLink)がnullptrかをチェックしなくても良い
-  std::vector<cnoid::Position> eeLocalT; // constant. 要素数と順序はeeNameと同じ. Parent Link Frame
-
   std::vector<double> maxTorque; // constant. 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上
   std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > > jointLimitTables; // constant. 要素数と順序はnumJoints()と同じ. for genRobot.
   std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > > jointLimitTablesTqc; // constant. 要素数と順序はnumJoints()と同じ. for actRobotTqc.
@@ -42,8 +94,8 @@ public:
 public:
   // from data port
   cnoid::BodyPtr refRobotRaw; // reference. reference world frame
-  std::vector<cnoid::Vector6> refEEWrenchOrigin; // 要素数と順序はeeNameと同じ.FootOrigin frame. EndEffector origin. ロボットが受ける力
-  std::vector<cpp_filters::TwoPointInterpolatorSE3> refEEPoseRaw; // 要素数と順序はeeNameと同じ. reference world frame. EEPoseはjoint angleなどと比べて遅い周期で届くことが多いので、interpolaterで補間する.
+  std::vector<cnoid::Vector6> refEEWrenchOrigin; // 要素数と順序はendEffectorsと同じ.FootOrigin frame. EndEffector origin. ロボットが受ける力
+  std::vector<cpp_filters::TwoPointInterpolatorSE3> refEEPoseRaw; // 要素数と順序はendEffectorsと同じ. reference world frame. EEPoseはjoint angleなどと比べて遅い周期で届くことが多いので、interpolaterで補間する.
   cnoid::BodyPtr actRobotRaw; // actual. actual imu world frame
   class Collision {
   public:
@@ -66,8 +118,8 @@ public:
 
   // refToGenFrameConverter
   cnoid::BodyPtr refRobot; // reference. generate frame
-  std::vector<cnoid::Position> refEEPose; // 要素数と順序はeeNameと同じ.generate frame
-  std::vector<cnoid::Vector6> refEEWrench; // 要素数と順序はeeNameと同じ.generate frame. EndEffector origin. ロボットが受ける力
+  std::vector<cnoid::Position> refEEPose; // 要素数と順序はendEffectorsと同じ.generate frame
+  std::vector<cnoid::Vector6> refEEWrench; // 要素数と順序はendEffectorsと同じ.generate frame. EndEffector origin. ロボットが受ける力
   double refdz = 1.0; // generate frame. 支持脚からのCogの目標高さ. 0より大きい
   cpp_filters::TwoPointInterpolatorSE3 footMidCoords = cpp_filters::TwoPointInterpolatorSE3(cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB); // generate frame. Z軸は鉛直. 支持脚の位置姿勢(Z軸は鉛直)にdefaultTranslatePosを適用したものの間をつなぐ. interpolatorによって連続的に変化する. reference frameとgenerate frameの対応付けに用いられる
 
@@ -76,16 +128,16 @@ public:
   cnoid::Vector3 actCog; // generate frame.
   cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> actCogVel = cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3>(3.5, cnoid::Vector3::Zero());  // generate frame.  現在のCOM速度. cutoff=4.0Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ
   cpp_filters::FirstOrderLowPassFilter<cnoid::Vector6> actRootVel = cpp_filters::FirstOrderLowPassFilter<cnoid::Vector6>(3.5, cnoid::Vector6::Zero()); // generate frame. 現在のroot速度. rootLink origin. actCogVelと同程度. これを使ってfilterした後の値がactRobot->rootLink()->v()/w()に入るので、現在のroot速度を使いたいときはactRootVelではなくactRobot->rootLink()->v()/w()を使う
-  std::vector<cnoid::Position> actEEPose; // 要素数と順序はeeNameと同じ.generate frame
-  std::vector<cnoid::Vector6> actEEWrench; // 要素数と順序はeeNameと同じ.generate frame. EndEffector origin. ロボットが受ける力
+  std::vector<cnoid::Position> actEEPose; // 要素数と順序はendEffectorsと同じ.generate frame
+  std::vector<cnoid::Vector6> actEEWrench; // 要素数と順序はendEffectorsと同じ.generate frame. EndEffector origin. ロボットが受ける力
 
   // ExternalForceHandler
   double omega = std::sqrt(g / refdz); // DCMの計算に用いる. 0より大きい
   cnoid::Vector3 l = cnoid::Vector3(0, 0, refdz); // generate frame. FootGuidedControlで外力を計算するときの、ZMP-重心の相対位置に対するオフセット. また、CMPの計算時にDCMに対するオフセット(CMP + l = DCM). 連続的に変化する.
 
   // ImpedanceController
-  std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector6> > icEEOffset; // 要素数と順序はeeNameと同じ.generate frame. endEffector origin. icで計算されるオフセット
-  std::vector<cnoid::Position> icEETargetPose; // 要素数と順序はeeNameと同じ.generate frame. icで計算された目標位置姿勢. icEETargetPose = icEEOffset + refEEPose
+  std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector6> > icEEOffset; // 要素数と順序はendEffectorsと同じ.generate frame. endEffector origin. icで計算されるオフセット
+  std::vector<cnoid::Position> icEETargetPose; // 要素数と順序はendEffectorsと同じ.generate frame. icで計算された目標位置姿勢. icEETargetPose = icEEOffset + refEEPose
 
   // CmdVelGenerator
   cnoid::Vector3 cmdVel = cnoid::Vector3::Zero(); // X[m/s] Y[m/s] theta[rad/s]. Z軸はgenerate frame鉛直. support leg frame. 不連続に変化する
@@ -142,9 +194,9 @@ public:
   cnoid::Vector3 genCog; // generate frame. abcで計算された目標COM
   cnoid::Vector3 genCogVel;  // generate frame.  abcで計算された目標COM速度
   cnoid::Vector3 genCogAcc;  // generate frame.  abcで計算された目標COM加速度
-  std::vector<cnoid::Position> abcEETargetPose; // 要素数と順序はeeNameと同じ.generate frame. abcで計算された目標位置姿勢
-  std::vector<cnoid::Vector6> abcEETargetVel; // 要素数と順序はeeNameと同じ.generate frame. endeffector origin. abcで計算された目標速度
-  std::vector<cnoid::Vector6> abcEETargetAcc; // 要素数と順序はeeNameと同じ.generate frame. endeffector origin. abcで計算された目標加速度
+  std::vector<cnoid::Position> abcEETargetPose; // 要素数と順序はendEffectorsと同じ.generate frame. abcで計算された目標位置姿勢
+  std::vector<cnoid::Vector6> abcEETargetVel; // 要素数と順序はendEffectorsと同じ.generate frame. endeffector origin. abcで計算された目標速度
+  std::vector<cnoid::Vector6> abcEETargetAcc; // 要素数と順序はendEffectorsと同じ.generate frame. endeffector origin. abcで計算された目標加速度
 
   // Stabilizer
   cnoid::BodyPtr actRobotTqc; // output. 関節トルク制御用. (actRobotと同じだが、uの値として指令関節トルクが入っている)
@@ -162,7 +214,7 @@ public:
 
     // Stabilizer
     cnoid::Vector3 stTargetZmp; // generate frame. stで計算された目標ZMP
-    std::vector<cnoid::Vector6> stEETargetWrench; // 要素数と順序はeeNameと同じ.generate frame. EndEffector origin. ロボットが受ける力
+    std::vector<cnoid::Vector6> stEETargetWrench; // 要素数と順序はendEffectorsと同じ.generate frame. EndEffector origin. ロボットが受ける力
   };
   DebugData debugData; // デバッグ用のOutPortから出力するためのデータ. AutoStabilizer内の制御処理では使われることは無い. そのため、モード遷移や初期化等の処理にはあまり注意を払わなくて良い
 
@@ -192,9 +244,10 @@ public:
   }
 
   void push_backEE(const std::string& name_, const std::string& parentLink_, const cnoid::Position& localT_){
-    eeName.push_back(name_);
-    eeParentLink.push_back(parentLink_);
-    eeLocalT.push_back(localT_);
+    endEffectors.emplace_back();
+    endEffectors.back().name = name_;
+    endEffectors.back().parentLink = parentLink_;
+    endEffectors.back().localT = localT_;
     refEEWrenchOrigin.push_back(cnoid::Vector6::Zero());
     refEEPoseRaw.push_back(cpp_filters::TwoPointInterpolatorSE3(cnoid::Position::Identity(), cnoid::Vector6::Zero(),cnoid::Vector6::Zero(), cpp_filters::HOFFARBIB));
     refEEPose.push_back(cnoid::Position::Identity());

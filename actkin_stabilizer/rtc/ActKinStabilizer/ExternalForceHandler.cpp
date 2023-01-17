@@ -11,12 +11,12 @@ bool ExternalForceHandler::initExternalForceHandlerOutput(const GaitParam& gaitP
    */
   cnoid::Vector6 feedForwardExternalWrench = cnoid::Vector6::Zero(); // generate frame. genCog - refdzの位置origin.
   cnoid::Vector3 genCog_minus_refdz(gaitParam.genCog[0],gaitParam.genCog[1],gaitParam.genCog[2]-refdz_limited);
-  for(int i=0; i<gaitParam.eeName.size();i++){ // 脚以外の目標反力を足す
+  for(int i=0; i<gaitParam.endEffectors.size();i++){ // 脚以外の目標反力を足す
     double ratio = 1.0;
     if(i < NUM_LEGS){ // 脚は、isManualControlModeの場合のみrefEEWrenchに応じて重心をオフセットする
       ratio = gaitParam.isManualControlMode[i].value();
     }
-    cnoid::Position eePose = gaitParam.genRobot->link(gaitParam.eeParentLink[i])->T() * gaitParam.eeLocalT[i]; // generate frame
+    cnoid::Position eePose = gaitParam.genRobot->link(gaitParam.endEffectors[i].parentLink)->T() * gaitParam.endEffectors[i].localT; // generate frame
     cnoid::Vector6 eeWrench; /*generate frame. endeffector origin*/
     eeWrench.head<3>() = gaitParam.footMidCoords.value().linear() * gaitParam.refEEWrenchOrigin[i].head<3>();
     eeWrench.tail<3>() = gaitParam.footMidCoords.value().linear() * gaitParam.refEEWrenchOrigin[i].tail<3>();
@@ -76,7 +76,7 @@ bool ExternalForceHandler::handleFeedForwardExternalForce(const GaitParam& gaitP
 
   cnoid::Vector6 feedForwardExternalWrench = cnoid::Vector6::Zero(); // generate frame. genCog - refdzの位置origin.
   cnoid::Vector3 genCog_minus_refdz(gaitParam.genCog[0],gaitParam.genCog[1],gaitParam.genCog[2]-refdz_limited);
-  for(int i=0; i<gaitParam.eeName.size();i++){ // 脚以外の目標反力を足す
+  for(int i=0; i<gaitParam.endEffectors.size();i++){ // 脚以外の目標反力を足す
     double ratio = 1.0;
     if(i < NUM_LEGS){ // 脚は、isManualControlModeの場合のみrefEEWrenchに応じて重心をオフセットする
       ratio = gaitParam.isManualControlMode[i].value();

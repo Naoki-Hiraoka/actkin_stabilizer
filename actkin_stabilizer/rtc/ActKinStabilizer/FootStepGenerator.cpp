@@ -6,8 +6,8 @@ bool FootStepGenerator::initFootStepNodesList(const GaitParam& gaitParam,
                                               std::vector<GaitParam::FootStepNodes>& o_footstepNodesList, std::vector<cnoid::Position>& o_srcCoords, std::vector<cnoid::Position>& o_dstCoordsOrg, double& o_remainTimeOrg, std::vector<GaitParam::SwingState_enum>& o_swingState, double& o_elapsedTime, std::vector<bool>& o_prevSupportPhase) const{
   // footStepNodesListを初期化する
   std::vector<GaitParam::FootStepNodes> footstepNodesList(1);
-  cnoid::Position rlegCoords = gaitParam.genRobot->link(gaitParam.eeParentLink[RLEG])->T()*gaitParam.eeLocalT[RLEG];
-  cnoid::Position llegCoords = gaitParam.genRobot->link(gaitParam.eeParentLink[LLEG])->T()*gaitParam.eeLocalT[LLEG];
+  cnoid::Position rlegCoords = gaitParam.genRobot->link(gaitParam.endEffectors[RLEG].parentLink)->T()*gaitParam.endEffectors[RLEG].localT;
+  cnoid::Position llegCoords = gaitParam.genRobot->link(gaitParam.endEffectors[LLEG].parentLink)->T()*gaitParam.endEffectors[LLEG].localT;
   footstepNodesList[0].dstCoords = {rlegCoords, llegCoords};
   footstepNodesList[0].isSupportPhase = {(gaitParam.isManualControlMode[RLEG].getGoal() == 0.0), (gaitParam.isManualControlMode[LLEG].getGoal() == 0.0)};
   footstepNodesList[0].remainTime = 0.0;

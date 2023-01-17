@@ -30,8 +30,8 @@ bool ActToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt,
     double rlegweight = gaitParam.footstepNodesList[0].isSupportPhase[RLEG]? 1.0 : 0.0;
     double llegweight = gaitParam.footstepNodesList[0].isSupportPhase[LLEG]? 1.0 : 0.0;
     if(!gaitParam.footstepNodesList[0].isSupportPhase[RLEG] && !gaitParam.footstepNodesList[0].isSupportPhase[LLEG]) rlegweight = llegweight = 1.0;
-    cnoid::Position actrleg = actRobot->link(gaitParam.eeParentLink[RLEG])->T()*gaitParam.eeLocalT[RLEG];
-    cnoid::Position actlleg = actRobot->link(gaitParam.eeParentLink[LLEG])->T()*gaitParam.eeLocalT[LLEG];
+    cnoid::Position actrleg = actRobot->link(gaitParam.endEffectors[RLEG].parentLink)->T()*gaitParam.endEffectors[RLEG].localT;
+    cnoid::Position actlleg = actRobot->link(gaitParam.endEffectors[LLEG].parentLink)->T()*gaitParam.endEffectors[LLEG].localT;
     cnoid::Position actFootMidCoords = mathutil::calcMidCoords(std::vector<cnoid::Position>{actrleg, actlleg},
                                                                std::vector<double>{rlegweight, llegweight});
     cnoid::Position actFootOriginCoords = mathutil::orientCoordToAxis(actFootMidCoords, cnoid::Vector3::UnitZ());
@@ -43,12 +43,12 @@ bool ActToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt,
     actRobot->calcCenterOfMass();
   }
 
-  std::vector<cnoid::Position> actEEPose(gaitParam.eeName.size(), cnoid::Position::Identity());
-  std::vector<cnoid::Vector6> actEEWrench(gaitParam.eeName.size(), cnoid::Vector6::Zero());
+  std::vector<cnoid::Position> actEEPose(gaitParam.endEffectors.size(), cnoid::Position::Identity());
+  std::vector<cnoid::Vector6> actEEWrench(gaitParam.endEffectors.size(), cnoid::Vector6::Zero());
   {
     // 各エンドエフェクタのactualの位置・力を計算
-    for(int i=0;i<gaitParam.eeName.size(); i++){
-      actEEPose[i] = actRobot->link(gaitParam.eeParentLink[i])->T() * gaitParam.eeLocalT[i];
+    for(int i=0;i<gaitParam.endEffectors.size(); i++){
+      actEEPose[i] = actRobot->link(gaitParam.endEffectors[i].parentLink)->T() * gaitParam.endEffectors[i].localT;
       if(this->eeForceSensor[i] != ""){
         cnoid::ForceSensorPtr sensor = actRobot->findDevice<cnoid::ForceSensor>(this->eeForceSensor[i]);
         cnoid::Vector6 senF = sensor->F();

@@ -186,7 +186,7 @@ void LegCoordsGenerator::calcLegCoords(const GaitParam& gaitParam, double dt, bo
 
 void LegCoordsGenerator::calcEETargetPose(const GaitParam& gaitParam, double dt,
                                           std::vector<cnoid::Position>& o_abcEETargetPose, std::vector<cnoid::Vector6>& o_abcEETargetVel, std::vector<cnoid::Vector6>& o_abcEETargetAcc) const{
-  for(int i=0;i<gaitParam.eeName.size();i++){
+  for(int i=0;i<gaitParam.endEffectors.size();i++){
     cnoid::Position prevPose = gaitParam.abcEETargetPose[i];
     cnoid::Vector6 prevVel = gaitParam.abcEETargetVel[i];
 

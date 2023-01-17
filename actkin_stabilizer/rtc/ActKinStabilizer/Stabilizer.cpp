@@ -194,12 +194,12 @@ bool Stabilizer::calcResolvedAccelerationControl(const GaitParam& gaitParam, dou
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > ikConstraint2;
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > ikConstraint3;
 
-    for(int i=0;i<gaitParam.eeName.size();i++){
-      this->aikEEPositionConstraint[i]->A_link() = actRobotTqc->link(gaitParam.eeParentLink[i]);
-      this->aikEEPositionConstraint[i]->A_localpos() = gaitParam.eeLocalT[i];
+    for(int i=0;i<gaitParam.endEffectors.size();i++){
+      this->aikEEPositionConstraint[i]->A_link() = actRobotTqc->link(gaitParam.endEffectors[i].parentLink);
+      this->aikEEPositionConstraint[i]->A_localpos() = gaitParam.endEffectors[i].localT;
       this->aikEEPositionConstraint[i]->B_link() = nullptr;
-      this->aikEEPositionConstraint[i]->eval_link() = actRobotTqc->link(gaitParam.eeParentLink[i]); // local 座標系でerrorやgainを評価
-      this->aikEEPositionConstraint[i]->eval_localR() = gaitParam.eeLocalT[i].linear(); // local 座標系でerrorやgainを評価
+      this->aikEEPositionConstraint[i]->eval_link() = actRobotTqc->link(gaitParam.endEffectors[i].parentLink); // local 座標系でerrorやgainを評価
+      this->aikEEPositionConstraint[i]->eval_localR() = gaitParam.endEffectors[i].localT.linear(); // local 座標系でerrorやgainを評価
 
       if(i < NUM_LEGS &&
          (gaitParam.footstepNodesList[0].isSupportPhase[i] || // 支持脚
@@ -403,9 +403,9 @@ bool Stabilizer::calcResolvedAccelerationControl(const GaitParam& gaitParam, dou
     std::vector<std::shared_ptr<IK::IKConstraint> > ikConstraint2;
 
     // EEF
-    for(int i=0;i<gaitParam.eeName.size();i++){
-      this->ikEEPositionConstraint[i]->A_link() = genRobot->link(gaitParam.eeParentLink[i]);
-      this->ikEEPositionConstraint[i]->A_localpos() = gaitParam.eeLocalT[i];
+    for(int i=0;i<gaitParam.endEffectors.size();i++){
+      this->ikEEPositionConstraint[i]->A_link() = genRobot->link(gaitParam.endEffectors[i].parentLink);
+      this->ikEEPositionConstraint[i]->A_localpos() = gaitParam.endEffectors[i].localT;
       this->ikEEPositionConstraint[i]->B_link() = nullptr;
       this->ikEEPositionConstraint[i]->B_localpos() = gaitParam.abcEETargetPose[i];
       this->ikEEPositionConstraint[i]->maxError() << 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt;
@@ -521,8 +521,8 @@ bool Stabilizer::calcWrench(const GaitParam& gaitParam, const cnoid::Vector3& ge
 
   cnoid::Vector6 tgtSupWrench = cnoid::Vector6::Zero(); // ルートリンクが支持脚から受ける必要がある外力. generate frame. cog origin.
   // manipulation arm/legの目標反力
-  std::vector<cnoid::Vector6> tgtEEManipWrench(gaitParam.eeName.size(), cnoid::Vector6::Zero()); /* 要素数EndEffector数. generate frame. EndEffector origin*/
-  for(int i = 0;i<gaitParam.eeName.size();i++){
+  std::vector<cnoid::Vector6> tgtEEManipWrench(gaitParam.endEffectors.size(), cnoid::Vector6::Zero()); /* 要素数EndEffector数. generate frame. EndEffector origin*/
+  for(int i = 0;i<gaitParam.endEffectors.size();i++){
     if(i < NUM_LEGS && gaitParam.isManualControlMode[i].getGoal() == 0.0) tgtEEManipWrench[i].setZero(); // 支持脚 or 遊脚. 上位からの目標反力は使わない
     else tgtEEManipWrench[i] = gaitParam.refEEWrench[i]; // manipulation arm/leg. 上位からの目標反力を使う
   }
@@ -535,7 +535,7 @@ bool Stabilizer::calcWrench(const GaitParam& gaitParam, const cnoid::Vector3& ge
     cnoid::Vector6 F_o = cnoid::calcInverseDynamics(actRobotTqc->rootLink()); // ルートリンクが受ける外力の和. generate frame. generate frame origin.
 
     cnoid::Vector6 tgtSupWrench_o = F_o; // ルートリンクが支持脚から受ける必要がある外力. generate frame. generate frame origin.
-    for(int i = 0;i<gaitParam.eeName.size();i++){
+    for(int i = 0;i<gaitParam.endEffectors.size();i++){
       tgtSupWrench_o.head<3>() -= tgtEEManipWrench[i].head<3>();
       tgtSupWrench_o.tail<3>() -= tgtEEManipWrench[i].tail<3>();
       tgtSupWrench_o.tail<3>() -= gaitParam.actEEPose[i].translation().cross(tgtEEManipWrench[i].tail<3>());
@@ -547,7 +547,7 @@ bool Stabilizer::calcWrench(const GaitParam& gaitParam, const cnoid::Vector3& ge
 
   }else{ // useActState==false
     tgtSupWrench.head<3>() = genNextForce;
-    for(int i = 0;i<gaitParam.eeName.size();i++){
+    for(int i = 0;i<gaitParam.endEffectors.size();i++){
       tgtSupWrench.head<3>() -= tgtEEManipWrench[i].head<3>();
       tgtSupWrench.tail<3>() -= tgtEEManipWrench[i].tail<3>();
       tgtSupWrench.tail<3>() -= (gaitParam.abcEETargetPose[i].translation()-gaitParam.genCog).cross(tgtEEManipWrench[i].tail<3>());
@@ -728,10 +728,10 @@ bool Stabilizer::calcWrench(const GaitParam& gaitParam, const cnoid::Vector3& ge
   }
 
   // エンドエフェクタ力を関節トルクに変換
-  for(int i=0;i<gaitParam.eeName.size();i++){
-    cnoid::JointPath jointPath(actRobotTqc->rootLink(), actRobotTqc->link(gaitParam.eeParentLink[i]));
+  for(int i=0;i<gaitParam.endEffectors.size();i++){
+    cnoid::JointPath jointPath(actRobotTqc->rootLink(), actRobotTqc->link(gaitParam.endEffectors[i].parentLink));
     cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,jointPath.numJoints()); // generate frame. endeffector origin
-    cnoid::setJacobian<0x3f,0,0,true>(jointPath,actRobotTqc->link(gaitParam.eeParentLink[i]),gaitParam.eeLocalT[i].translation(), // input
+    cnoid::setJacobian<0x3f,0,0,true>(jointPath,actRobotTqc->link(gaitParam.endEffectors[i].parentLink),gaitParam.endEffectors[i].localT.translation(), // input
                                       J); // output
     cnoid::VectorX tau = - J.transpose() * tgtEEWrench[i];
     for(int j=0;j<jointPath.numJoints();j++){

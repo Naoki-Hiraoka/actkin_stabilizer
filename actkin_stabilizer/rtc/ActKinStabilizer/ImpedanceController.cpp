@@ -3,7 +3,7 @@
 
 void ImpedanceController::initImpedanceOutput(const GaitParam& gaitParam,
                                               std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector6> >& o_icEEOffset /*generate frame, endeffector origin*/) const{
-  for(int i=0;i<gaitParam.eeName.size();i++){
+  for(int i=0;i<gaitParam.endEffectors.size();i++){
     o_icEEOffset[i].reset(cnoid::Vector6::Zero());
   }
 }
@@ -12,7 +12,7 @@ bool ImpedanceController::calcImpedanceControl(double dt, const GaitParam& gaitP
                                                std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector6> >& o_icEEOffset /*generate frame, endeffector origin*/, std::vector<cnoid::Position>& o_icEETargetPose /*generate frame*/) const{
 
   // icEEOffsetを計算
-  for(int i=0;i<gaitParam.eeName.size();i++){
+  for(int i=0;i<gaitParam.endEffectors.size();i++){
     if(!this->isImpedanceMode[i]){
       o_icEEOffset[i].interpolate(dt);
     }else{
@@ -75,7 +75,7 @@ bool ImpedanceController::calcImpedanceControl(double dt, const GaitParam& gaitP
   }
 
   // refEEPoseとicEEOffsetから、icEETargetPoseを計算
-  for(int i=0;i<gaitParam.eeName.size();i++){
+  for(int i=0;i<gaitParam.endEffectors.size();i++){
     cnoid::Vector6 icOffset = o_icEEOffset[i].value();
     o_icEETargetPose[i].translation() = icOffset.head<3>() + gaitParam.refEEPose[i].translation();
     o_icEETargetPose[i].linear() = cnoid::AngleAxisd(icOffset.tail<3>().norm(),(icOffset.tail<3>().norm()>0)?icOffset.tail<3>().normalized() : cnoid::Vector3::UnitX()) * gaitParam.refEEPose[i].linear();

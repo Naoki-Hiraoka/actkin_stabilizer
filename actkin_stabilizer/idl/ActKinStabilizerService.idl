@@ -23,11 +23,10 @@ module actkin_stabilizer
 
   struct EEPointIdl
   {
-    // mode frame. eef origin.
-    RTC::Pose3D pose;
-    sequence<double, 6> velocity;
-    sequence<double, 6> acceleration;
-    sequence<double, 6> wrench;
+    RTC::Pose3D pose; // mode frame. eef origin.
+    sequence<double, 6> velocity; // mode frame. eef origin.
+    sequence<double, 6> acceleration; // mode frame. eef origin.
+    sequence<double, 6> wrench; // mode frame. eef origin.
     double timeFromStart;
   };
 
