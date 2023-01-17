@@ -68,7 +68,7 @@ public:
 public:
   // startAutoBalancer直後の初回で呼ばれる
   bool initFootStepNodesList(const GaitParam& gaitParam,
-                             std::vector<GaitParam::FootStepAction> o_footstepCommandList, std::vector<GaitParam::FootStepNodes>& o_footstepNodesList, std::vector<cnoid::Position>& o_srcCoords, std::vector<cnoid::Position>& o_dstCoordsOrg, double& o_remainTimeOrg, std::vector<GaitParam::SwingState_enum>& o_swingState, double& o_elapsedTime, std::vector<bool>& o_prevSupportPhase) const;
+                             std::vector<GaitParam::FootStepNodes>& o_footstepNodesList, std::vector<cnoid::Position>& o_srcCoords, std::vector<cnoid::Position>& o_dstCoordsOrg, double& o_remainTimeOrg, std::vector<GaitParam::SwingState_enum>& o_swingState, double& o_elapsedTime, std::vector<bool>& o_prevSupportPhase) const;
 
   class StepNode {
   public:
@@ -100,7 +100,7 @@ public:
   bool setFootSteps(const GaitParam& gaitParam, const std::vector<StepNode>& footsteps,
                     std::vector<GaitParam::FootStepNodes>& o_footstepNodesList) const;
   bool goPos(const GaitParam& gaitParam, double x, double y, double th,
-             std::vector<FootStepAction>& o_footStepActionList) const;
+             std::vector<GaitParam::FootStepNodes>& o_footstepNodesList) const;
 
   // footstepNodesListの末尾に両脚が横に並ぶ位置に2歩歩くnodeが入る. 外部からgoVelocityModeをfalseにすること
   bool goStop(const GaitParam& gaitParam,
@@ -147,21 +147,11 @@ protected:
   void transformFutureSteps(std::vector<GaitParam::FootStepNodes>& footstepNodesList, int index, const cnoid::Vector3& transform/*generate frame*/) const;
   // indexのsupportLegが次にswingするまでの間の位置を、generate frameで(左から)transformだけ動かす
   void transformCurrentSupportSteps(int leg, std::vector<GaitParam::FootStepNodes>& footstepNodesList, int index, const cnoid::Position& transform/*generate frame*/) const;
-
-  GaitParam::FootStepNodes calcDefaultDoubleSupportStep(const GaitParam::FootStepNodes& footstepNodes, double doubleSupportTime, std::vector<bool>& endRefZmpState) const;
-
-  // 一歩足を踏み出す. RLEGとLLEGどちらをswingすべきかも決める
-  void calcDefaultNextStep(std::vector<GaitParam::FootStepAction>& footStepActionList, std::vector<GaitParam::FootStepNodes>& footStepNodesList,
-                           const GaitParam& gaitParam, const cnoid::Vector3& offset = cnoid::Vector3::Zero() /*leg frame*/, bool stableStart = true) const;
-  // swingLegをMAKE_CONTACTさせるActionを作る.
-  void calcDefaultMakeContactAction(const int& swingLeg, std::vector<GaitParam::FootStepAction>& footStepActionList, std::vector<GaitParam::FootStepNodes>& footStepNodesList,const GaitParam& gaitParam, const cnoid::Vector3& offset = cnoid::Vector3::Zero()) const;
-  // targetLegをSTART_SUPPORTさせるActionを作る.
-  void calcDefaultMakeContactAction(const int& targetLeg, std::vector<GaitParam::FootStepAction>& footStepActionList, std::vector<GaitParam::FootStepNodes>& footStepNodesList,const GaitParam& gaitParam) const;
-
-  void footStepActionListToFootStepNodesList(const GaitParam& gaitParam, // input
-                                             std::vector<GaitParam::FootStepNodes>& footstepNodesList) const;
-  // footstepNodesにfootStepActionを行った次のfootstepNodesを返す
-  GaitParam::FootStepNodes footStepActionToFootStepNodes(const GaitParam::FootStepAction& footStepAction, const GaitParam::FootStepNodes& footstepNodes) const;
+  // footstepNodesの次の一歩を作る. RLEGとLLEGどちらをswingすべきかも決める
+  void calcDefaultNextStep(std::vector<GaitParam::FootStepNodes>& footstepNodesList, const GaitParam& gaitParam, const cnoid::Vector3& offset = cnoid::Vector3::Zero() /*leg frame*/, bool stableStart = true) const;
+  // footstepNodesの次の一歩を作る.
+  GaitParam::FootStepNodes calcDefaultSwingStep(const int& swingLeg, const GaitParam::FootStepNodes& footstepNodes, const GaitParam& gaitParam, const cnoid::Vector3& offset = cnoid::Vector3::Zero(), bool startWithSingleSupport = false) const;
+  GaitParam::FootStepNodes calcDefaultDoubleSupportStep(const GaitParam::FootStepNodes& footstepNodes, double doubleSupportTime, GaitParam::FootStepNodes::refZmpState_enum endRefZmpState) const;
 };
 
 #endif

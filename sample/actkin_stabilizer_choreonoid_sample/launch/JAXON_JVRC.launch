@@ -1,0 +1,14 @@
+<launch>
+  <param name="use_sim_time" value="true"/>
+  <node name="choreonoid" pkg="choreonoid_ros_ext_plugin" type="run_choreonoid.sh"
+        args="$(find actkin_stabilizer_choreonoid_sample)/config/JAXON_JVRC.cnoid --start-simulation"/>
+
+  <include file="$(find actkin_stabilizer_choreonoid_sample)/launch/hrpsys.launch">
+    <arg name="CONF_FILE" value="$(find hrpsys_choreonoid_tutorials)/models/JAXON_JVRC.conf"/>
+    <arg name="URDF_FILE" value="$(find hrpsys_choreonoid_tutorials)/models/JAXON_JVRC.urdf"/>
+    <arg name="MODEL_FILE" value="$(find jvrc_models)/JAXON_JVRC/JAXON_JVRCmain_hrpsys.wrl" />
+    <arg name="CONTROLLER_CONFIG_FILE" value="$(find hrpsys_choreonoid_tutorials)/models/JAXON_JVRC_controller_config.yaml" />
+    <arg name="HRPSYS_PY_PKG" value="actkin_stabilizer_choreonoid_sample"/>
+    <arg name="HRPSYS_PY_NAME" value="jaxon_jvrc_setup.py"/>
+  </include>
+</launch>

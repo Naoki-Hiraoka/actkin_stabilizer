@@ -1,0 +1,265 @@
+<launch>
+  <arg name="CONF_FILE"/>
+  <arg name="URDF_FILE"/>
+  <arg name="MODEL_FILE"/>
+  <arg name="CONTROLLER_CONFIG_FILE" />
+  <arg name="HRPSYS_PY_PKG"/>
+  <arg name="HRPSYS_PY_NAME"/>
+
+  <arg name="RealTimeExecutionContext" value="execution_context_shmtime/ShmTimePeriodicExecutionContext"/>
+  <env name="ORBgiopMaxMsgSize" value="2147483648" /> <!-- openrtm setting -->
+
+  <node name="modelloader" pkg="openhrp3" type="openhrp-model-loader"
+        args="-ORBInitRef NameService=corbaloc:iiop:localhost:15005/NameService" output="screen"/> <!-- required for hrpsys RTCs -->
+
+  <node name="rtcd" pkg="openrtm_aist" type="rtcd" output="screen"
+        args='-o manager.is_master:YES -o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc"' />
+
+  <node name="load_RobotHardware0"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys_trans_bridge/RobotHardware localhost:2810">
+    <rosparam subst_value="true">
+      execution_context:
+        type: $(arg RealTimeExecutionContext)
+        rate: 500
+      instance_name: RobotHardware0
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="el.rtc:q"     to="RobotHardware0.rtc:qRef" />
+  <rtconnect from="akst.rtc:genTauOut" to="RobotHardware0.rtc:tauRef" />
+  <!-- <rtactivate component="RobotHardware0.rtc"/> -->
+
+  <node pkg="hrpsys_ros_bridge" name="RobotHardwareServiceROSBridge" type="RobotHardwareServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' /> <!-- exec_cxt.periodic.rateでros::spin-onceが呼ばれるので、Ctrl-Cしたときの応答やserviceCallの応答速度が影響する -->
+  <rtconnect from="RobotHardwareServiceROSBridge.rtc:RobotHardwareService" to="RobotHardware0.rtc:RobotHardwareService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="RobotHardwareServiceROSBridge.rtc" />
+
+  <node name="load_seq"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys-base/SequencePlayer localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: seq
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="sh.rtc:qOut"     to="seq.rtc:qInit" />
+  <rtconnect from="sh.rtc:basePosOut"     to="seq.rtc:basePosInit" />
+  <rtconnect from="sh.rtc:baseRpyOut"     to="seq.rtc:baseRpyInit" />
+  <rtconnect from="sh.rtc:zmpOut"     to="seq.rtc:zmpRefInit" />
+  <!-- <rtactivate component="seq.rtc"/> -->
+
+  <node pkg="hrpsys_ros_bridge" name="SequencePlayerServiceROSBridge" type="SequencePlayerServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' />
+  <rtconnect from="SequencePlayerServiceROSBridge.rtc:SequencePlayerService" to="seq.rtc:SequencePlayerService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="SequencePlayerServiceROSBridge.rtc" />
+
+  <node name="load_sh"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys-base/StateHolder localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: sh
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="seq.rtc:qRef"     to="sh.rtc:qIn" />
+  <rtconnect from="seq.rtc:tqRef"     to="sh.rtc:tqIn" />
+  <rtconnect from="seq.rtc:basePos"     to="sh.rtc:basePosIn" />
+  <rtconnect from="seq.rtc:baseRpy"     to="sh.rtc:baseRpyIn" />
+  <rtconnect from="seq.rtc:zmpRef"     to="sh.rtc:zmpIn" />
+  <rtconnect from="seq.rtc:optionalData"     to="sh.rtc:optionalDataIn" />
+  <rtconnect from="seq.rtc:rfsensorRef"     to="sh.rtc:rfsensorIn" />
+  <rtconnect from="seq.rtc:lfsensorRef"     to="sh.rtc:lfsensorIn" />
+  <rtconnect from="seq.rtc:rhsensorRef"     to="sh.rtc:rhsensorIn" />
+  <rtconnect from="seq.rtc:lhsensorRef"     to="sh.rtc:lhsensorIn" />
+  <rtconnect from="RobotHardware0.rtc:q"     to="sh.rtc:currentQIn" />
+  <!-- <rtactivate component="sh.rtc"/> -->
+
+  <node pkg="hrpsys_ros_bridge" name="StateHolderServiceROSBridge" type="StateHolderServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' />
+  <rtconnect from="StateHolderServiceROSBridge.rtc:StateHolderService" to="sh.rtc:StateHolderService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="StateHolderServiceROSBridge.rtc" />
+
+
+  <node name="load_akst"  pkg="rtcloader" type="load.py" output="screen" args="actkin_stabilizer/ActKinStabilizer localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: akst
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="sh.rtc:qOut"              to="akst.rtc:qRef" />
+  <rtconnect from="sh.rtc:basePosOut"     to="akst.rtc:refBasePosIn" />
+  <rtconnect from="sh.rtc:baseRpyOut"     to="akst.rtc:refBaseRpyIn" />
+  <rtconnect from="RobotHardware0.rtc:q"  to="akst.rtc:qAct" />
+  <rtconnect from="RobotHardware0.rtc:dq" to="akst.rtc:dqAct" />
+  <rtconnect from="sh.rtc:tqOut"          to="akst.rtc:refTauIn" />
+  <rtconnect from="kf.rtc:rpy"            to="akst.rtc:actImuIn" />
+  <rtconnect from="sh.rtc:rfsensorOut"    to="akst.rtc:refrlegWrenchIn" />
+  <rtconnect from="sh.rtc:lfsensorOut"    to="akst.rtc:refllegWrenchIn" />
+  <rtconnect from="sh.rtc:rhsensorOut"    to="akst.rtc:refrarmWrenchIn" />
+  <rtconnect from="sh.rtc:lhsensorOut"    to="akst.rtc:reflarmWrenchIn" />
+  <rtconnect from="rmfo.rtc:off_rfsensor" to="akst.rtc:actrfsensorIn" />
+  <rtconnect from="rmfo.rtc:off_lfsensor" to="akst.rtc:actlfsensorIn" />
+  <rtconnect from="rmfo.rtc:off_rhsensor" to="akst.rtc:actrhsensorIn" />
+  <rtconnect from="rmfo.rtc:off_lhsensor" to="akst.rtc:actlhsensorIn" />
+  <rtconnect from="akst.rtc:RobotHardwareService" to="RobotHardware0.rtc:RobotHardwareService"  subscription_type="new" push_policy="new"/>
+  <!-- <rtactivate component="akst.rtc"/> -->
+
+  <node pkg="actkin_stabilizer" name="ActKinStabilizerServiceROSBridge" type="ActKinStabilizerServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' >
+    <param name="threads" value="4"/> <!-- 複数clientから同時にサービスコールを送るとデッドロックに陥る場合があるので、スレッドを増やしている. https://github.com/start-jsk/rtmros_common/issues/1127 -->
+  </node>
+  <rtconnect from="ActKinStabilizerServiceROSBridge.rtc:ActKinStabilizerService" to="akst.rtc:ActKinStabilizerService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="ActKinStabilizerServiceROSBridge.rtc" />
+
+  <node name="load_co"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys-base/CollisionDetector localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: co
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="akst.rtc:q"     to="co.rtc:qRef" />
+  <rtconnect from="RobotHardware0.rtc:servoState"     to="co.rtc:servoStateIn" />
+  <!-- <rtactivate component="co.rtc"/> -->
+
+  <node pkg="hrpsys_ros_bridge" name="CollisionDetectorServiceROSBridge" type="CollisionDetectorServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' />
+  <rtconnect from="CollisionDetectorServiceROSBridge.rtc:CollisionDetectorService" to="co.rtc:CollisionDetectorService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="CollisionDetectorServiceROSBridge.rtc" />
+
+  <node name="load_el"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys_ext_rtc/SoftErrorLimiter2 localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: el
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="co.rtc:q"     to="el.rtc:qRef" />
+  <rtconnect from="RobotHardware0.rtc:q"     to="el.rtc:qCurrent" />
+  <rtconnect from="RobotHardware0.rtc:servoState"     to="el.rtc:servoStateIn" />
+  <!-- <rtactivate component="el.rtc"/> -->
+
+  <node pkg="hrpsys_ext_rtc" name="SoftErrorLimiter2ServiceROSBridge" type="SoftErrorLimiter2ServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' />
+  <rtconnect from="SoftErrorLimiter2ServiceROSBridge.rtc:SoftErrorLimiter2Service" to="el.rtc:SoftErrorLimiter2Service"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="SoftErrorLimiter2ServiceROSBridge.rtc" />
+
+
+  <node name="load_kf"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys-base/KalmanFilter localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: kf
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="RobotHardware0.rtc:gsensor"     to="kf.rtc:acc" />
+  <rtconnect from="RobotHardware0.rtc:gyrometer"     to="kf.rtc:rate" />
+  <rtconnect from="RobotHardware0.rtc:q"     to="kf.rtc:qCurrent" />
+  <rtconnect from="akst.rtc:genImuAccOut"     to="kf.rtc:accRef" />
+  <!-- <rtactivate component="kf.rtc"/> -->
+
+  <node pkg="hrpsys_ros_bridge" name="KalmanFilterServiceROSBridge" type="KalmanFilterServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' />
+  <rtconnect from="KalmanFilterServiceROSBridge.rtc:KalmanFilterService" to="kf.rtc:KalmanFilterService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="KalmanFilterServiceROSBridge.rtc" />
+
+  <node name="load_rmfo"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys-base/RemoveForceSensorLinkOffset localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: rmfo
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <rtconnect from="RobotHardware0.rtc:q"     to="rmfo.rtc:qCurrent" />
+  <rtconnect from="RobotHardware0.rtc:rfsensor"     to="rmfo.rtc:rfsensor" />
+  <rtconnect from="RobotHardware0.rtc:lfsensor"     to="rmfo.rtc:lfsensor" />
+  <rtconnect from="RobotHardware0.rtc:rhsensor"     to="rmfo.rtc:rhsensor" />
+  <rtconnect from="RobotHardware0.rtc:lhsensor"     to="rmfo.rtc:lhsensor" />
+  <rtconnect from="kf.rtc:rpy"     to="rmfo.rtc:rpy" />
+  <!-- <rtactivate component="rmfo.rtc"/> -->
+
+  <node pkg="hrpsys_ros_bridge" name="RemoveForceSensorLinkOffsetServiceROSBridge" type="RemoveForceSensorLinkOffsetServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' />
+  <rtconnect from="RemoveForceSensorLinkOffsetServiceROSBridge.rtc:RemoveForceSensorLinkOffsetService" to="rmfo.rtc:RemoveForceSensorLinkOffsetService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="RemoveForceSensorLinkOffsetServiceROSBridge.rtc" />
+
+  <node name="load_log"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys-base/DataLogger localhost:2810">
+    <rosparam subst_value="true">
+      instance_name: log
+      config_file: $(arg CONF_FILE)
+    </rosparam>
+  </node>
+  <!-- <rtactivate component="log.rtc"/> -->
+
+  <node pkg="hrpsys_ros_bridge" name="DataLoggerServiceROSBridge" type="DataLoggerServiceROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:100"' />
+  <rtconnect from="DataLoggerServiceROSBridge.rtc:DataLoggerService" to="log.rtc:DataLoggerService"  subscription_type="new" push_policy="new"/>
+  <rtactivate component="DataLoggerServiceROSBridge.rtc" />
+
+  <node name="serialize" pkg="rtcloader" type="serialize.py" output="screen" args="localhost:2810">
+    <rosparam>
+      instance_names: ["RobotHardware0","seq","sh","kf","rmfo","akst","co","el","log"]
+    </rosparam>
+  </node>
+
+  <param name="robot_description" textfile="$(arg URDF_FILE)" />
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="hrpsys_state_publisher" />
+
+  <node name = "HrpsysSeqStateROSBridge"
+        pkg  = "hrpsys_ros_bridge"
+        type = "HrpsysSeqStateROSBridge"
+        args = '-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o model:"file://$(arg MODEL_FILE)" -o "example.HrpsysSeqStateROSBridge.config_file:$(arg CONF_FILE)" -o "exec_cxt.periodic.rate:500"'
+        output = "screen">
+    <param name="publish_sensor_transforms" value="true" />
+  </node>
+  <rtconnect from="RobotHardware0.rtc:q"  to="HrpsysSeqStateROSBridge0.rtc:rsangle" subscription_type="new" push_policy="new"/>
+  <rtconnect from="RobotHardware0.rtc:tau"  to="HrpsysSeqStateROSBridge0.rtc:rstorque" subscription_type="new" push_policy="new"/>
+  <rtconnect from="RobotHardware0.rtc:gsensor" to="HrpsysSeqStateROSBridge0.rtc:gsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="RobotHardware0.rtc:gyrometer" to="HrpsysSeqStateROSBridge0.rtc:gyrometer" subscription_type="new" push_policy="new"/>
+  <rtconnect from="RobotHardware0.rtc:rfsensor"     to="HrpsysSeqStateROSBridge0.rtc:rfsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="RobotHardware0.rtc:lfsensor"     to="HrpsysSeqStateROSBridge0.rtc:lfsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="RobotHardware0.rtc:rhsensor"     to="HrpsysSeqStateROSBridge0.rtc:rhsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="RobotHardware0.rtc:lhsensor"     to="HrpsysSeqStateROSBridge0.rtc:lhsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="rmfo.rtc:off_rfsensor"     to="HrpsysSeqStateROSBridge0.rtc:off_rfsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="rmfo.rtc:off_lfsensor"     to="HrpsysSeqStateROSBridge0.rtc:off_lfsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="rmfo.rtc:off_rhsensor"     to="HrpsysSeqStateROSBridge0.rtc:off_rhsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="rmfo.rtc:off_lhsensor"     to="HrpsysSeqStateROSBridge0.rtc:off_lhsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="akst.rtc:genBaseTformOut" to="HrpsysSeqStateROSBridge0.rtc:baseTform" subscription_type="new" push_policy="new"/>
+  <rtconnect from="sh.rtc:qOut" to="HrpsysSeqStateROSBridge0.rtc:mcangle" subscription_type="new" push_policy="new"/>
+  <rtconnect from="sh.rtc:rfsensorOut"     to="HrpsysSeqStateROSBridge0.rtc:ref_rfsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="sh.rtc:lfsensorOut"     to="HrpsysSeqStateROSBridge0.rtc:ref_lfsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="sh.rtc:rhsensorOut"     to="HrpsysSeqStateROSBridge0.rtc:ref_rhsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="sh.rtc:lhsensorOut"     to="HrpsysSeqStateROSBridge0.rtc:ref_lhsensor" subscription_type="new" push_policy="new"/>
+  <rtconnect from="el.rtc:servoStateOut" to="HrpsysSeqStateROSBridge0.rtc:servoState" subscription_type="new" push_policy="new"/>
+  <rtconnect from="kf.rtc:rpy" to="HrpsysSeqStateROSBridge0.rtc:baseRpy" subscription_type="new" push_policy="new"/>
+  <rtconnect from="HrpsysSeqStateROSBridge0.rtc:SequencePlayerService" to="seq.rtc:SequencePlayerService" subscription_type="new" push_policy="new"/>
+  <rtactivate component="HrpsysSeqStateROSBridge0.rtc" />
+
+  <rosparam command="load" file="$(arg CONTROLLER_CONFIG_FILE)" />
+  <node name = "HrpsysJointTrajectoryBridge"
+        pkg  = "hrpsys_ros_bridge"
+        type = "HrpsysJointTrajectoryBridge"
+        args = '-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o model:"file://$(arg MODEL_FILE)" -o "exec_cxt.periodic.rate:500"'
+        output = "screen" />
+  <rtconnect from="HrpsysJointTrajectoryBridge0.rtc:SequencePlayerService" to="seq.rtc:SequencePlayerService" subscription_type="new" push_policy="new"/>
+  <rtactivate component="HrpsysJointTrajectoryBridge0.rtc" />
+
+  <node name="hrpsys_py" pkg="$(arg HRPSYS_PY_PKG)" type="$(arg HRPSYS_PY_NAME)" output="screen" args="init"/>
+
+
+  <!-- self collision BEGIN -->
+  <node pkg="collision_checker_rtc" name="CollisionChecker" type="CollisionCheckerComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:50" -o "example.CollisionChecker.config_file:$(arg CONF_FILE)"' />
+  <rtconnect from="akst.rtc:q" to="CollisionChecker0.rtc:qIn" subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
+  <rtconnect from="akst.rtc:genBasePosOut" to="CollisionChecker0.rtc:basePosIn"  subscription_type="new" push_policy="all" push_rate="50" buffer_length="8"/>
+  <rtconnect from="akst.rtc:genBaseRpyOut" to="CollisionChecker0.rtc:baseRpyIn"  subscription_type="new" push_policy="all" push_rate="50" buffer_length="8"/>
+  <rtconnect from="CollisionChecker0.rtc:collisionOut" to="akst.rtc:selfCollisionIn" subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
+  <rtactivate component="CollisionChecker0.rtc" />
+  <!-- self collision END -->
+
+
+  <!-- steppable region BEGIN -->
+  <node pkg="auto_stabilizer_ros_bridge" name="AutoStabilizerROSBridge" type="AutoStabilizerROSBridgeComp"
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:500"' />
+  <rtconnect from="akst.rtc:landingTargetOut" to="AutoStabilizerROSBridge.rtc:landingTargetIn" subscription_type="new" push_policy="new"/>
+  <rtconnect from="akst.rtc:steppableRegionIn" to="AutoStabilizerROSBridge.rtc:steppableRegionOut" subscription_type="new" push_policy="new"/>
+  <rtconnect from="akst.rtc:landingHeightIn" to="AutoStabilizerROSBridge.rtc:landingHeightOut" subscription_type="new" push_policy="new"/>
+  <rtactivate component="AutoStabilizerROSBridge.rtc" />
+  <!-- steppable region END -->
+
+
+  <node name="rtmlaunch_hrpsys" pkg="openrtm_tools" type="rtmlaunch.py" args="$(find actkin_stabilizer_choreonoid_sample)/launch/hrpsys.launch" output="screen">
+    <env name="RTC_CONNECTION_CHECK_ONCE" value="true"/>
+  </node>
+</launch>

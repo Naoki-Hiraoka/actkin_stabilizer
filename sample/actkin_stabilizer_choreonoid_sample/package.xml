@@ -12,9 +12,16 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
-  <depend>actkin_stabilizer</depend>
-  <depend>actkin_stabilizer_ros_bridge</depend>
+  <depend>openrtm_tools</depend>
+  <depend>choreonoid</depend>
+  <depend>choreonoid_bridge_shm</depend>
+  <depend>choreonoid_ros_ext_plugin</depend>
+  <depend>rtcloader</depend>
+  <depend>hrpsys_trans_bridge</depend>
+  <depend>execution_context_shmtime</depend>
   <depend>hrpsys_choreonoid_tutorials</depend>
-  <depend>vnoid_world</depend>
+  <depend>jvrc_models</depend>
+
+  <depend>actkin_stabilizer</depend>
   <depend>collision_checker_rtc</depend>
 </package>
