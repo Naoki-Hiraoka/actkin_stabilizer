@@ -343,6 +343,8 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   // initialize parameters
   this->loop_ = 0;
 
+  this->outputJointAngleFilter_.resize(this->gaitParam_.refRobotRaw->numJoints(), cpp_filters::TwoPointInterpolator<double>(0.0, 0.0, 0.0, cpp_filters::HOFFARBIB));
+
   return RTC::RTC_OK;
 }
 
@@ -385,6 +387,8 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
       refRobotRaw->rootLink()->p() = p;
       refRobotRaw->rootLink()->v() = v;
       refRobotRaw->rootLink()->dv() = dv;
+
+      actRobotRaw->rootLink()->p() = p; // actRobotRawの位置をとりあえずrefの値にしておく.
     } else {
       std::cerr << "m_refBasePos is not finite!" << std::endl;
     }
@@ -646,52 +650,25 @@ bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode&
 }
 
 // static function
-bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, cpp_filters::TwoPointInterpolator<double>& abcToStTransitionInterpolator, double dt, const GaitParam& gaitParam){
-  if(mode.isSyncToABC()){
-    if(mode.isSyncToABCInit()){
-      idleToAbcTransitionInterpolator.reset(0.0);
-      idleToAbcTransitionInterpolator.setGoal(1.0,mode.remainTime());
-    }
-  }else if(mode.isSyncToIdle()){
-    if(mode.isSyncToIdleInit()){
-      idleToAbcTransitionInterpolator.reset(1.0);
-      idleToAbcTransitionInterpolator.setGoal(0.0,mode.remainTime());
-    }
-  }
-  idleToAbcTransitionInterpolator.interpolate(dt);
-
-  if(mode.isSyncToST()){
-    if(mode.isSyncToSTInit()){
-      abcToStTransitionInterpolator.reset(0.0);
-      abcToStTransitionInterpolator.setGoal(1.0,mode.remainTime());
-    }
-  }else if(mode.isSyncToStopST()){
-    if(mode.isSyncToStopSTInit()){
-      abcToStTransitionInterpolator.reset(1.0);
-      abcToStTransitionInterpolator.setGoal(0.0,mode.remainTime());
-    }
-  }
-  abcToStTransitionInterpolator.interpolate(dt);
-
+bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter, std::vector<cpp_filters::TwoPointInterpolator<double> >& outputJointAngleFilter){
   {
     // q
     ports.m_q_.tm = ports.m_qRef_.tm;
     ports.m_q_.data.length(gaitParam.genRobot->numJoints());
     for(int i=0;i<gaitParam.genRobot->numJoints();i++){
-      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
-        double value = gaitParam.refRobotRaw->joint(i)->q();
-        if(std::isfinite(value)) ports.m_q_.data[i] = value;
-        else std::cerr << "m_q is not finite!" << std::endl;
-      }else if(mode.isSyncToABC() || mode.isSyncToIdle()){
-        double ratio = idleToAbcTransitionInterpolator.value();
-        double value = gaitParam.refRobotRaw->joint(i)->q() * (1.0 - ratio) + gaitParam.genRobot->joint(i)->q() * ratio;
-        if(std::isfinite(value)) ports.m_q_.data[i] = value;
-        else std::cerr << "m_q is not finite!" << std::endl;
-      }else{
-        double value = gaitParam.genRobot->joint(i)->q();
-        if(std::isfinite(value)) ports.m_q_.data[i] = value;
-        else std::cerr << "m_q is not finite!" << std::endl;
+      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_IDLE || !gaitParam.jointControllable[i]){
+        outputJointAngleFilter[i].reset(gaitParam.refRobotRaw->joint(i)->q()); // shの値をそのまま出力
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_EMG || mode.now() == ActKinStabilizer::ControlMode::MODE_EMG){
+        // 今の値のまま
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_RELEASE_EMG){
+        outputJointAngleFilter[i].setGoal(gaitParam.refRobotRaw->joint(i)->q(), mode.remainTime());
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ST || mode.now() == ActKinStabilizer::ControlMode::MODE_ST){
+        outputJointAngleFilter[i].setGoal(gaitParam.actRobotRaw->joint(i)->q(), 0.3); // 0.3秒で遅れてactualで上書き
       }
+
+      outputJointAngleFilter[i].interpolate(dt);
+      if(std::isfinite(outputJointAngleFilter[i].value())) ports.m_q_.data[i] = outputJointAngleFilter[i].value();
+      else std::cerr << "m_q is not finite!" << std::endl;
     }
     ports.m_qOut_.write();
   }
@@ -701,38 +678,54 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
     ports.m_genTau_.tm = ports.m_qRef_.tm;
     ports.m_genTau_.data.length(gaitParam.actRobotTqc->numJoints());
     for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
-      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
-        double value = gaitParam.refRobotRaw->joint(i)->u();
-        if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
-        else std::cerr << "m_genTau is not finite!" << std::endl;
-      }else if(mode.isSyncToABC() || mode.isSyncToIdle()){
-        double ratio = idleToAbcTransitionInterpolator.value();
-        double value = gaitParam.refRobotRaw->joint(i)->u() * (1.0 - ratio);
-        if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
-        else std::cerr << "m_genTau is not finite!" << std::endl;
-      }else if(mode.isSTRunning()){
-        double value = gaitParam.actRobotTqc->joint(i)->u();
-        if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
-        else std::cerr << "m_genTau is not finite!" << std::endl;
-      }else{
-        ports.m_genTau_.data[i] = 0.0; // stopST補間中は、tauを少しずつ0に減らして行きたくなるが、吹っ飛ぶことがあるので一気に0にした方が安全
+      double value = 0.0;
+      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_IDLE || !gaitParam.jointControllable[i]){
+        value = gaitParam.refRobotRaw->joint(i)->u();
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_EMG || mode.now() == ActKinStabilizer::ControlMode::MODE_EMG){
+        value = 0.0; // stopST補間中は、tauを少しずつ0に減らして行きたくなるが、吹っ飛ぶことがあるので一気に0にした方が安全
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_RELEASE_EMG){
+        value = mode.transitionRatio() * gaitParam.refRobotRaw->joint(i)->u();
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ST || mode.now() == ActKinStabilizer::ControlMode::MODE_ST){
+        value = gaitParam.actRobotTqc->joint(i)->u();
       }
+
+      if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
+      else std::cerr << "m_genTau is not finite!" << std::endl;
     }
     ports.m_genTauOut_.write();
   }
 
-  {
-    // basePose
-    cnoid::Position basePose;
-    if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE){
-      basePose = gaitParam.refRobotRaw->rootLink()->T();
-    }else if(mode.isSyncToABC() || mode.isSyncToIdle()){
-      double ratio = idleToAbcTransitionInterpolator.value();
-      basePose = mathutil::calcMidCoords(std::vector<cnoid::Position>{gaitParam.refRobotRaw->rootLink()->T(), gaitParam.genRobot->rootLink()->T()},
-                                         std::vector<double>{1.0 - ratio, ratio});
-    }else{
-      basePose = gaitParam.genRobot->rootLink()->T();
+  // Gains
+  if(!CORBA::is_nil(ports.m_robotHardwareService0_._ptr()) && //コンシューマにプロバイダのオブジェクト参照がセットされていない(接続されていない)状態
+     !ports.m_robotHardwareService0_->_non_existent()){ //プロバイダのオブジェクト参照は割り当てられているが、相手のオブジェクトが非活性化 (RTC は Inactive 状態) になっている状態
+    for(int i=0;i<gaitParam.genRobot->numJoints();i++){
+      // Stabilizerが動いている間にonDeactivated()->onActivated()が呼ばれると、ゲインがもとに戻らない. onDeactivated()->onActivated()が呼ばれるのはサーボオン直前で、通常、サーボオン時にゲインを指令するので、問題ない.
+      if(!gaitParam.jointControllable[i]){
+        // pass
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ST && mode.pre() != mode.now()){
+        ports.m_robotHardwareService0_->setServoPGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),0.0*100.0,mode.remainTime());
+        ports.m_robotHardwareService0_->setServoDGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),0.0*100.0,mode.remainTime());
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_EMG && mode.pre() != mode.now()){
+        ports.m_robotHardwareService0_->setServoPGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),100.0*100.0,mode.remainTime());
+        ports.m_robotHardwareService0_->setServoDGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),100.0*100.0,mode.remainTime());
+      }else{
+        // pass
+      }
     }
+  }
+
+  {
+    // basePose (hrpsys_odom)
+    if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE){
+      outputRootPoseFilter.reset(gaitParam.actRobotRaw->rootLink()->T()); // pはref値. RはIMUが入っている
+    }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_IDLE){
+      outputRootPoseFilter.setGoal(gaitParam.actRobotRaw->rootLink()->T(), mode.remainTime()); // pはref値. RはIMUが入っている
+    }else{
+      outputRootPoseFilter.reset(gaitParam.actRobot->rootLink()->T()); // pはref値. RはIMUが入っている
+    }
+    outputRootPoseFilter.interpolate(dt);
+    cnoid::Position basePose = outputRootPoseFilter.value();
+
     cnoid::Vector3 basePos = basePose.translation();
     cnoid::Matrix3 baseR = basePose.linear();
     cnoid::Vector3 baseRpy = cnoid::rpyFromRot(basePose.linear());
@@ -780,7 +773,7 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
   {
     cnoid::Vector3 genImuAcc = cnoid::Vector3::Zero(); // imu frame
     if(mode.isABCRunning()){
-      cnoid::RateGyroSensorPtr imu = gaitParam.genRobot->findDevice<cnoid::RateGyroSensor>("gyrometer"); // genrobot imu
+      cnoid::RateGyroSensorPtr imu = gaitParam.actRobot->findDevice<cnoid::RateGyroSensor>("gyrometer"); // actrobot imu
       cnoid::Matrix3 imuR = imu->link()->R() * imu->R_local(); // generate frame
       genImuAcc/*imu frame*/ = imuR.transpose() * gaitParam.genCogAcc/*generate frame*/; // 本当は重心の加速ではなく、関節の加速等を考慮したimuセンサの加速を直接与えたいが、関節角度ベースのinverse-kinematicsを使う以上モデルのimuセンサの位置の加速が不連続なものになることは避けられないので、重心の加速を用いている. この出力の主な用途は歩行時の姿勢推定のため、重心の加速が考慮できればだいたい十分.
     }
@@ -792,26 +785,6 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
       ports.m_genImuAccOut_.write();
     }else{
       std::cerr << "m_genImuAcc is not finite!" << std::endl;
-    }
-  }
-
-  // Gains
-  if(!CORBA::is_nil(ports.m_robotHardwareService0_._ptr()) && //コンシューマにプロバイダのオブジェクト参照がセットされていない(接続されていない)状態
-     !ports.m_robotHardwareService0_->_non_existent()){ //プロバイダのオブジェクト参照は割り当てられているが、相手のオブジェクトが非活性化 (RTC は Inactive 状態) になっている状態
-    for(int i=0;i<gaitParam.genRobot->numJoints();i++){
-      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || !gaitParam.jointControllable[i]){
-        // pass
-      }else if(mode.isSyncToABC()){
-        // pass
-      }else if(mode.isSyncToIdle()){
-        // pass
-      }else{
-        // Stabilizerが動いている間にonDeactivated()->onActivated()が呼ばれると、ゲインがもとに戻らない. onDeactivated()->onActivated()が呼ばれるのはサーボオン直前で、通常、サーボオン時にゲインを指令するので、問題ない.
-        if(abcToStTransitionInterpolator.remain_time() > 0.0 && abcToStTransitionInterpolator.current_time() <= dt) { // 補間が始まった初回
-          ports.m_robotHardwareService0_->setServoPGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),(1.0-abcToStTransitionInterpolator.getGoal())*100.0,abcToStTransitionInterpolator.goal_time());
-          ports.m_robotHardwareService0_->setServoDGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),(1.0-abcToStTransitionInterpolator.getGoal())*100.0,abcToStTransitionInterpolator.goal_time());
-        }
-      }
     }
   }
 
@@ -982,8 +955,8 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   this->refToGenFrameConverter_.update(this->dt_);
   this->stabilizer_.update(this->dt_);
 
-  if(this->mode_.isABCRunning()) {
-    if(this->mode_.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
+  if(this->mode_.isSTRunning()) {
+    if(this->mode_.isSyncToSTInit()){ // startStabilizer直後の初回. 内部パラメータのリセット
       this->gaitParam_.reset();
       this->refToGenFrameConverter_.reset();
       this->actToGenFrameConverter_.reset();
@@ -996,7 +969,7 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
     ActKinStabilizer::execActKinStabilizer(this->mode_, this->gaitParam_, this->dt_, this->footStepGenerator_, this->legCoordsGenerator_, this->refToGenFrameConverter_, this->actToGenFrameConverter_, this->impedanceController_, this->stabilizer_,this->externalForceHandler_, this->legManualController_, this->cmdVelGenerator_);
   }
 
-  ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, this->idleToAbcTransitionInterpolator_, this->abcToStTransitionInterpolator_, this->dt_, this->gaitParam_);
+  ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, this->dt_, this->gaitParam_, this->outputRootPoseFilter_, this->outputJointAngleFilter_);
 
   return RTC::RTC_OK;
 }
@@ -1005,7 +978,6 @@ RTC::ReturnCode_t ActKinStabilizer::onActivated(RTC::UniqueId ec_id){
   std::lock_guard<std::mutex> guard(this->mutex_);
   std::cerr << "[" << m_profile.instance_name << "] "<< "onActivated(" << ec_id << ")" << std::endl;
   this->mode_.reset();
-  this->idleToAbcTransitionInterpolator_.reset(0.0);
   return RTC::RTC_OK;
 }
 RTC::ReturnCode_t ActKinStabilizer::onDeactivated(RTC::UniqueId ec_id){

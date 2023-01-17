@@ -174,20 +174,30 @@ protected:
   class ControlMode{
   public:
     /*
-      MODE_IDLE -> startAutoBalancer() -> MODE_SYNC_TO_ABC -> MODE_ABC -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST -> stopStabilizer() -> MODE_SYNC_TO_STOPST -> MODE_ABC -> stopAutoBalancer() -> MODE_SYNC_TO_IDLE -> MODE_IDLE
+      MODE_IDLE -> startAutoBalancer() -> MODE_SYNC_TO_ABC(odomの初期化) -> MODE_ABC
+      MODE_ABC -> stopAutoBalancer() -> MODE_SYNC_TO_IDLE -> MODE_IDLE
+
+      MODE_ABC or MODE_EMG (各タスクは常にactualで上書きされる) -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST
+      MODE_ST(指令関節角度は常にactualで上書きされる) -> stopStabilizer() -> MODE_SYNC_TO_EMG -> MODE_EMG (指令関節角度は常に動かない)
+
+      MODE_EMG (指令関節角度は常に動かない) -> releaseEmergencyStop() -> MODE_SYMC_TO_RELEASE_EMG -> MODE_ABC
+
       MODE_SYNC_TO*の時間はtransition_timeの時間をかけて遷移するが、少なくとも1周期はMODE_SYNC_TO*を経由する.
       MODE_SYNC_TO*では、基本的に次のMODEと同じ処理が行われるが、出力時に前回のMODEの出力から補間するような軌道に加工されることで出力の連続性を確保する
       補間している途中で別のmodeに切り替わることは無いので、そこは安心してプログラムを書いてよい(例外はonActivated). 同様に、remainTimeが突然減ったり増えたりすることもない
+
+      MODE_ABC: 位置制御. 出力する指令関節角度は変化しない
+      MODE_ST: トルク制御. 出力する指令関節角度はactualの値で更新する.
      */
-    enum Mode_enum{ MODE_IDLE, MODE_SYNC_TO_ABC, MODE_ABC, MODE_SYNC_TO_ST, MODE_ST, MODE_SYNC_TO_STOPST, MODE_SYNC_TO_IDLE};
-    enum Transition_enum{ START_ABC, STOP_ABC, START_ST, STOP_ST};
-    double abc_start_transition_time, abc_stop_transition_time, st_start_transition_time, st_stop_transition_time;
+    enum Mode_enum{ MODE_IDLE, MODE_SYNC_TO_ABC, MODE_ABC, MODE_SYNC_TO_ST, MODE_ST, MODE_SYNC_TO_EMG, MODE_EMG, MODE_SYNC_TO_RELEASE_EMG, MODE_SYNC_TO_IDLE};
+    enum Transition_enum{ START_ABC, STOP_ABC, START_ST, STOP_ST, RELEASE_EMG};
+    double abc_start_transition_time, abc_stop_transition_time, st_start_transition_time, st_stop_transition_time, release_emergency_transition_time;
   private:
     Mode_enum current, previous, next;
-    double remain_time;
+    cpp_filters::TwoPointInterpolator<double> transitionInterpolator = cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::LINEAR); // 0 -> 1
   public:
-    ControlMode(){ reset(); abc_start_transition_time = 2.0; abc_stop_transition_time = 2.0; st_start_transition_time = 0.5; st_stop_transition_time = 0.5;}
-    void reset(){ current = previous = next = MODE_IDLE; remain_time = 0;}
+    ControlMode(){ reset(); abc_start_transition_time = 0.5; abc_stop_transition_time = 2.0; st_start_transition_time = 0.5; st_stop_transition_time = 0.5; release_emergency_transition_time = 2.0;}
+    void reset(){ current = previous = next = MODE_IDLE; transitionInterpolator.reset(1.0);}
     bool setNextTransition(const Transition_enum request){
       switch(request){
       case START_ABC:
@@ -197,7 +207,9 @@ protected:
       case START_ST:
         if(current == MODE_ABC){ next = MODE_SYNC_TO_ST; return true; }else{ return false; }
       case STOP_ST:
-        if(current == MODE_ST){ next = MODE_SYNC_TO_STOPST; return true; }else{ return false; }
+        if(current == MODE_ST){ next = MODE_SYNC_TO_EMG; return true; }else{ return false; }
+      case RELEASE_EMG:
+        if(current == MODE_EMG){ next = MODE_SYNC_TO_RELEASE_EMG; return true; }else{ return false; }
       default:
         return false;
       }
@@ -207,21 +219,27 @@ protected:
         previous = current; current = next;
         switch(current){
         case MODE_SYNC_TO_ABC:
-          remain_time = abc_start_transition_time; break;
+          transitionInterpolator.reset(0.0);
+          transitionInterpolator.setGoal(1.0, abc_start_transition_time); break;
         case MODE_SYNC_TO_IDLE:
-          remain_time = abc_stop_transition_time; break;
+          transitionInterpolator.reset(0.0);
+          transitionInterpolator.setGoal(1.0, abc_stop_transition_time); break;
         case MODE_SYNC_TO_ST:
-          remain_time = st_start_transition_time; break;
-        case MODE_SYNC_TO_STOPST:
-          remain_time = st_stop_transition_time; break;
+          transitionInterpolator.reset(0.0);
+          transitionInterpolator.setGoal(1.0, st_start_transition_time); break;
+        case MODE_SYNC_TO_EMG:
+          transitionInterpolator.reset(0.0);
+          transitionInterpolator.setGoal(1.0, st_stop_transition_time); break;
+        case MODE_SYNC_TO_RELEASE_EMG:
+          transitionInterpolator.reset(0.0);
+          transitionInterpolator.setGoal(1.0, release_emergency_transition_time); break;
         default:
           break;
         }
       }else{
         previous = current;
-        remain_time -= dt;
-        if(remain_time <= 0.0){
-          remain_time = 0.0;
+        transitionInterpolator.interpolate(dt);
+        if(transitionInterpolator.isEmpty()){
           switch(current){
           case MODE_SYNC_TO_ABC:
             current = next = MODE_ABC; break;
@@ -229,7 +247,9 @@ protected:
             current = next = MODE_IDLE; break;
           case MODE_SYNC_TO_ST:
             current = next = MODE_ST; break;
-          case MODE_SYNC_TO_STOPST:
+          case MODE_SYNC_TO_EMG:
+            current = next = MODE_EMG; break;
+          case MODE_SYNC_TO_RELEASE_EMG:
             current = next = MODE_ABC; break;
           default:
             break;
@@ -237,23 +257,24 @@ protected:
         }
       }
     }
-    double remainTime() const{ return remain_time;}
+    double remainTime() const{ return transitionInterpolator.remain_time();}
+    double transitionRatio() const{ return transitionInterpolator.value();}
     Mode_enum now() const{ return current; }
     Mode_enum pre() const{ return previous; }
-    bool isABCRunning() const{ return (current==MODE_SYNC_TO_ABC) || (current==MODE_ABC) || (current==MODE_SYNC_TO_ST) || (current==MODE_ST) || (current==MODE_SYNC_TO_STOPST) ;}
+    bool isABCRunning() const{ return (current==MODE_SYNC_TO_ABC) || (current==MODE_ABC) || (current==MODE_SYNC_TO_ST) || (current==MODE_ST) || (current==MODE_SYNC_TO_EMG) || (current==MODE_EMG) || (current==MODE_SYNC_TO_RELEASE_EMG) ;}
     bool isSyncToABC() const{ return current==MODE_SYNC_TO_ABC;}
     bool isSyncToABCInit() const{ return (current != previous) && isSyncToABC();}
     bool isSyncToIdle() const{ return current==MODE_SYNC_TO_IDLE;}
     bool isSyncToIdleInit() const{ return (current != previous) && isSyncToIdle();}
     bool isSyncToST() const{ return current == MODE_SYNC_TO_ST;}
     bool isSyncToSTInit() const{ return (current != previous) && isSyncToST();}
-    bool isSyncToStopST() const{ return current == MODE_SYNC_TO_STOPST;}
+    bool isSyncToStopST() const{ return current == MODE_SYNC_TO_EMG;}
     bool isSyncToStopSTInit() const{ return (current != previous) && isSyncToStopST();}
     bool isSTRunning() const{ return (current==MODE_SYNC_TO_ST) || (current==MODE_ST) ;}
   };
   ControlMode mode_;
-  cpp_filters::TwoPointInterpolator<double> idleToAbcTransitionInterpolator_ = cpp_filters::TwoPointInterpolator<double>(0.0, 0.0, 0.0, cpp_filters::LINEAR);
-  cpp_filters::TwoPointInterpolator<double> abcToStTransitionInterpolator_ = cpp_filters::TwoPointInterpolator<double>(0.0, 0.0, 0.0, cpp_filters::LINEAR);
+  cpp_filters::TwoPointInterpolatorSE3 outputRootPoseFilter_ = cpp_filters::TwoPointInterpolatorSE3(cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB);
+  std::vector<cpp_filters::TwoPointInterpolator<double> > outputJointAngleFilter_;
 
   GaitParam gaitParam_;
 
@@ -274,7 +295,7 @@ protected:
 
   static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal);
   static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator);
-  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, cpp_filters::TwoPointInterpolator<double>& abcToStTransitionInterpolator, double dt, const GaitParam& gaitParam);
+  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter, std::vector<cpp_filters::TwoPointInterpolator<double> >& outputJointAngleFilter);
 };
 
 

@@ -33,6 +33,7 @@ class ActKinStabilizer_Configurator(object):
     seq_svc = None
     sh_svc = None
     akst_svc = None
+    co_svc = None
     kf_svc = None
     rmfo_svc = None
     log_svc = None
@@ -44,6 +45,7 @@ class ActKinStabilizer_Configurator(object):
         self.seq_svc = rtm.findService(findComp("seq"),"SequencePlayerService","SequencePlayerService","service0")._narrow(OpenHRP.SequencePlayerService)
         self.sh_svc = rtm.findService(findComp("sh"),"StateHolderService","StateHolderService","service0")._narrow(OpenHRP.StateHolderService)
         self.akst_svc = rtm.findService(findComp("akst"),"ActKinStabilizerService","ActKinStabilizerService","service0")._narrow(actkin_stabilizer.ActKinStabilizerService)
+        self.co_svc = rtm.findService(findComp("co"),"CollisionDetectorService","CollisionDetectorService","service0")._narrow(OpenHRP.CollisionDetectorService)
         self.kf_svc = rtm.findService(findComp("kf"),"KalmanFilterService","KalmanFilterService","service0")._narrow(OpenHRP.KalmanFilterService)
         self.rmfo_svc = rtm.findService(findComp("rmfo"),"RemoveForceSensorLinkOffsetService","RemoveForceSensorLinkOffsetService","service0")._narrow(OpenHRP.RemoveForceSensorLinkOffsetService)
         self.log_svc = findComp("log").service("service0")._narrow(OpenHRP.DataLoggerService)
@@ -147,12 +149,14 @@ class ActKinStabilizer_Configurator(object):
 
     def servoOnWithResetPose(self):
         if self.servoOn() == True:
+            self.co_svc.enableCollisionDetection()
             self.setCollisionFreeResetPose()
             print "go to collision-free-reset-pose"
             self.seq_svc.waitInterpolation()
             self.setResetPose()
             print "go to reset-pose"
             self.seq_svc.waitInterpolation()
+            self.co_svc.disableCollisionDetection() # for torque control
 
     def removeForceSensorOffsetRMFO(self, sensor_names=[], tm=8.0):
         return self.rmfo_svc.removeForceSensorOffset(sensor_names, tm)
