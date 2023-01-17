@@ -9,7 +9,7 @@ from hrpsys import rtm
 from hrpsys.OpenHRP import *
 import OpenHRP
 
-from actkin_stabilizer import *
+import actkin_stabilizer
 from actkin_stabilizer.ActKinStabilizerService_idl import *
 
 def findComp(name):
@@ -107,11 +107,11 @@ class ActKinStabilizer_Configurator(object):
             c = raw_input("press 'Y' for HAND servo ON and power ON. >> ")
 
         # reset JointGroups
-        for k in ["right_hand", "left_hand"]:
+        for k in ["rhand", "lhand"]:
             self.seq_svc.removeJointGroup(k)
-        for k in ["right_hand", "left_hand"]:
+        for k in ["rhand", "lhand"]:
             self.seq_svc.waitInterpolationOfGroup(k)
-        for k in ["right_hand", "left_hand"]:
+        for k in ["rhand", "lhand"]:
             self.seq_svc.addJointGroup(k, self.Groups[k])
 
         # go Actual (hand only)
@@ -122,7 +122,7 @@ class ActKinStabilizer_Configurator(object):
         self.seq_svc.setJointAngles(commandAngle, 1.0)
         self.seq_svc.waitInterpolation()
 
-        for j in self.Groups["right_hand"] + self.Groups["left_hand"]:
+        for j in self.Groups["rhand"] + self.Groups["lhand"]:
             self.rh_svc.power(j ,OpenHRP.RobotHardwareService.SWITCH_ON)
             time.sleep(0.01)
             self.rh_svc.servo(j ,OpenHRP.RobotHardwareService.SWITCH_ON)
@@ -133,7 +133,7 @@ class ActKinStabilizer_Configurator(object):
         while (c != 'Y' and c != 'y'):
             c = raw_input("press 'Y' for HAND servo OFF and power OFF. >> ")
 
-        for j in self.Groups["right_hand"] + self.Groups["left_hand"]:
+        for j in self.Groups["rhand"] + self.Groups["lhand"]:
             self.rh_svc.servo(j ,OpenHRP.RobotHardwareService.SWITCH_OFF)
             time.sleep(0.01)
             self.rh_svc.power(j ,OpenHRP.RobotHardwareService.SWITCH_OFF)
@@ -198,7 +198,7 @@ class ActKinStabilizer_Configurator(object):
         self.log_svc.clear()
 
     def init(self):
-        for j in self.Groups["right_hand"] + self.Groups["left_hand"]:
+        for j in self.Groups["rhand"] + self.Groups["lhand"]:
             self.rh_svc.setServoErrorLimit(j, 0.0)
 
         for j in self.Groups["rleg"] + self.Groups["lleg"] + self.Groups["torso"] + self.Groups["head"] + self.Groups["rarm"] + self.Groups["larm"]:
