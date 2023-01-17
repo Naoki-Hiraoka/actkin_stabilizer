@@ -35,7 +35,7 @@ public:
   cnoid::Vector6 Kw = (cnoid::Vector6() <<  0,  0,  0,  0,  0,  0).finished(); // endeffector frame. passivity用. 0以上
   cnoid::Vector6 Dw = (cnoid::Vector6() <<  0,  0,  0,  0,  0,  0).finished(); // endeffector frame. passivity用. 0以上
   double odomWeight = 1.0; // 0より大きい.1以下
-  Eigen::SparseMatrix<double,Eigen::RowMajor> wrenchC = Eigen::SparseMatrix<double,Eigen::RowMajor>(0,6);  //wrench の制約. ee frame. ee origin
+  Eigen::SparseMatrix<double,Eigen::RowMajor> wrenchC = Eigen::SparseMatrix<double,Eigen::RowMajor>(0,6);  //wrench の制約. ee frame. ee origin. rleg,llegは、legHullから自動計算されるので、変更不可.
   cnoid::VectorX wrenchld = cnoid::VectorX(0);
   cnoid::VectorX wrenchud = cnoid::VectorX(0);
 
@@ -81,8 +81,9 @@ public:
   const double g = 9.80665; // 重力加速度
 
 public:
-  // parameter
-  std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector3> > copOffset = std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector3> >{cpp_filters::TwoPointInterpolator<cnoid::Vector3>(cnoid::Vector3(0.0,0.02,0.0),cnoid::Vector3::Zero(),cnoid::Vector3::Zero(),cpp_filters::HOFFARBIB),cpp_filters::TwoPointInterpolator<cnoid::Vector3>(cnoid::Vector3(0.0,-0.02,0.0),cnoid::Vector3::Zero(),cnoid::Vector3::Zero(),cpp_filters::HOFFARBIB)}; // 要素数2. rleg: 0. lleg: 1. endeffector frame. 足裏COPの目標位置. 幾何的な位置はcopOffset.value()無しで考えるが、目標COPを考えるときはcopOffset.value()を考慮する. クロスできたりジャンプできたりする脚でないと左右方向(外側向き)の着地位置修正は難しいので、その方向に転びそうになることが極力ないように内側にcopをオフセットさせておくとよい.  単位[m]. 滑らかに変化する.
+
+  // biped parameter
+  std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector3> > copOffset = std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector3> >{cpp_filters::TwoPointInterpolator<cnoid::Vector3>(cnoid::Vector3(0.0,0.02,0.0),cnoid::Vector3::Zero(),cnoid::Vector3::Zero(),cpp_filters::HOFFARBIB),cpp_filters::TwoPointInterpolator<cnoid::Vector3>(cnoid::Vector3(0.0,-0.02,0.0),cnoid::Vector3::Zero(),cnoid::Vector3::Zero(),cpp_filters::HOFFARBIB)}; // 要素数2. rleg: 0. lleg: 1. endeffector frame. refZmpTrajを求めるときに、endEffector位置からどれだけオフセットするか. クロスできたりジャンプできたりする脚でないと左右方向(外側向き)の着地位置修正は難しいので、その方向に転びそうになることが極力ないように内側にcopをオフセットさせておくとよい.  単位[m]. 滑らかに変化する.
   std::vector<std::vector<cnoid::Vector3> > legHull = std::vector<std::vector<cnoid::Vector3> >(2, std::vector<cnoid::Vector3>{cnoid::Vector3(0.115,0.065,0.0),cnoid::Vector3(-0.095,0.065,0.0),cnoid::Vector3(-0.095,-0.065,0.0),cnoid::Vector3(0.115,-0.065,0.0)}); // 要素数2. rleg: 0. lleg: 1. endeffector frame.  凸形状で,上から見て半時計回り. Z成分はあったほうが計算上扱いやすいからありにしているが、0でなければならない. 単位[m]. JAXONでは、COPがY -0.1近くにくるとギア飛びしやすいので、少しYの下限を少なくしている
   std::vector<double> muTrans = std::vector<double>(2, 0.5); // 要素数2. 0: rleg, 1: lleg. 足裏の摩擦係数. 0より大きい. 大股で歩くときはZMP-COMの位置関係的に、垂直抗力と並進力の比がそこまで大きな差にならないので、0.1~0.3程度だと足りない場合がある.
   std::vector<double> muRot = std::vector<double>(2, 0.05); // 要素数2. 0: rleg, 1: lleg. 足裏の回転摩擦係数. 0より大きい. 旋回歩行時に必要なので、小さすぎてはいけない
