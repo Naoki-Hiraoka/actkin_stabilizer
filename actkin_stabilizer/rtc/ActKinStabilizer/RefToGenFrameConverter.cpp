@@ -3,7 +3,7 @@
 #include "MathUtil.h"
 
 bool RefToGenFrameConverter::initGenRobot(const GaitParam& gaitParam, // input
-                                          cnoid::BodyPtr& genRobot, cpp_filters::TwoPointInterpolatorSE3& o_footMidCoords, cnoid::Vector3& o_genCogVel, cnoid::Vector3& o_genCogAcc) const{ // output
+                                          cnoid::BodyPtr& genRobot, cpp_filters::TwoPointInterpolatorSE3& o_footMidCoords, cnoid::Vector3& o_genCog, cnoid::Vector3& o_genCogVel, cnoid::Vector3& o_genCogAcc) const{ // output
   genRobot->rootLink()->T() = gaitParam.refRobotRaw->rootLink()->T();
   genRobot->rootLink()->v() = gaitParam.refRobotRaw->rootLink()->v();
   genRobot->rootLink()->w() = gaitParam.refRobotRaw->rootLink()->w();
@@ -25,6 +25,7 @@ bool RefToGenFrameConverter::initGenRobot(const GaitParam& gaitParam, // input
   cnoid::Vector3 genCogAcc = cnoid::Vector3::Zero();
 
   o_footMidCoords.reset(footMidCoords);
+  o_genCog = genRobot->centerOfMass();
   o_genCogVel = genCogVel;
   o_genCogAcc = genCogAcc;
   return true;
@@ -64,13 +65,14 @@ bool RefToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt,
   genFootMidCoords.linear() = footMidCoords.value().linear();
   genFootMidCoords.translation() = gaitParam.genCog - gaitParam.l; // 1周期前のlを使っているtが、lは不連続に変化するものではないので良い
   cnoid::Vector3 trans_footMidCoordsLocal = footMidCoords.value().linear().transpose() * (genFootMidCoords.translation() - footMidCoords.value().translation());
-  trans_footMidCoordsLocal[1] *= (1.0 - handFixMode.value());
+  trans_footMidCoordsLocal[0] *= (1.0 - handFixModeX.value());
+  trans_footMidCoordsLocal[1] *= (1.0 - handFixModeY.value());
   genFootMidCoords.translation() = footMidCoords.value().translation() + footMidCoords.value().linear() * trans_footMidCoordsLocal;
 
   // refRobotRawのrefFootMidCoordsを求めてrefRobotに変換する
   double refdz;
   std::vector<cnoid::Position> refEEPoseFK(gaitParam.eeName.size());
-  this->convertRefRobotRaw(gaitParam, genFootMidCoords,
+  this->convertRefRobotRaw(gaitParam, genFootMidCoords, dt,
                            refRobot, refEEPoseFK, refdz);
 
   // refEEPoseRawのrefFootMidCoordsを求めて変換する
@@ -97,6 +99,7 @@ bool RefToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt,
   o_refdz = refdz;
   o_footMidCoords = footMidCoords;
 
+  this->isInitial = false;
   return true;
 }
 
@@ -157,7 +160,12 @@ void RefToGenFrameConverter::calcFootMidCoords(const GaitParam& gaitParam, doubl
 }
 
 // refRobotRawをrefRobotに変換する.
-void RefToGenFrameConverter::convertRefRobotRaw(const GaitParam& gaitParam, const cnoid::Position& genFootMidCoords, cnoid::BodyPtr& refRobot, std::vector<cnoid::Position>& refEEPoseFK, double& refdz) const{
+void RefToGenFrameConverter::convertRefRobotRaw(const GaitParam& gaitParam, const cnoid::Position& genFootMidCoords, const double& dt, cnoid::BodyPtr& refRobot, std::vector<cnoid::Position>& refEEPoseFK, double& refdz) const{
+  cnoid::Vector3 prevRootp = refRobot->rootLink()->p();
+  cnoid::Matrix3 prevRootR = refRobot->rootLink()->R();
+  cnoid::Vector3 prevRootv = refRobot->rootLink()->v();
+  cnoid::Vector3 prevRootw = refRobot->rootLink()->w();
+
   cnoidbodyutil::copyRobotState(gaitParam.refRobotRaw, refRobot);
   cnoid::Position rleg = refRobot->link(gaitParam.eeParentLink[RLEG])->T()*gaitParam.eeLocalT[RLEG];
   cnoid::Position lleg = refRobot->link(gaitParam.eeParentLink[LLEG])->T()*gaitParam.eeLocalT[LLEG];
@@ -165,7 +173,26 @@ void RefToGenFrameConverter::convertRefRobotRaw(const GaitParam& gaitParam, cons
   refdz = (refFootMidCoords.inverse() * refRobot->centerOfMass())[2]; // ref重心高さ
 
   cnoidbodyutil::moveCoords(refRobot, genFootMidCoords, refFootMidCoords);
-  refRobot->calcForwardKinematics();
+
+  cnoid::Vector3 v, w, dv, dw;
+  if(this->isInitial){
+    v.setZero();
+    dv.setZero();
+    w.setZero();
+    dw.setZero();
+  }else{
+    v= (refRobot->rootLink()->p() - prevRootp) / dt;
+    dv = (v - prevRootv) / dt;
+    Eigen::AngleAxisd dR(refRobot->rootLink()->R() * prevRootR.transpose());
+    w = dR.angle() / dt * dR.axis();
+    dw = (w - prevRootw) / dt;
+  }
+  refRobot->rootLink()->v() = v;
+  refRobot->rootLink()->dv() = dv;
+  refRobot->rootLink()->w() = w;
+  refRobot->rootLink()->dw() = dw;
+
+  refRobot->calcForwardKinematics(true,true);
   refRobot->calcCenterOfMass();
 
   for(int i=0;i<gaitParam.eeName.size();i++){

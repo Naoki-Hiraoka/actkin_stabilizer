@@ -43,10 +43,10 @@ void LegCoordsGenerator::calcLegCoords(const GaitParam& gaitParam, double dt, bo
     for(int i=0;i<gaitParam.footstepNodesList.size();i++){
       cnoid::Vector3 zmpGoalPos;
 
-      if(gaitParam.footstepNodesList[i].endRefZmpState == GaitParam::FootStepNodes::refZmpState_enum::RLEG){
+      if(gaitParam.footstepNodesList[i].endRefZmpState[RLEG] && !gaitParam.footstepNodesList[i].endRefZmpState[LLEG]){ // 右脚の上にrefZmp
         cnoid::Position rlegGoalCoords = gaitParam.footstepNodesList[i].dstCoords[RLEG]; // このfootstepNode終了時にdstCoordsに行くように線形補間
         zmpGoalPos = rlegGoalCoords.translation() + rlegGoalCoords.linear()*gaitParam.copOffset[RLEG].value();
-      }else if(gaitParam.footstepNodesList[i].endRefZmpState == GaitParam::FootStepNodes::refZmpState_enum::LLEG){
+      }else if(!gaitParam.footstepNodesList[i].endRefZmpState[RLEG] && gaitParam.footstepNodesList[i].endRefZmpState[LLEG]){ // 左脚の上にrefZmp
         cnoid::Position llegGoalCoords = gaitParam.footstepNodesList[i].dstCoords[LLEG]; // このfootstepNode終了時にdstCoordsに行くように線形補間
         zmpGoalPos = llegGoalCoords.translation() + llegGoalCoords.linear()*gaitParam.copOffset[LLEG].value();
       }else{ //gaitParam.footstepNodesList[i].endRefZmpState == GaitParam::FootStepNodes::refZmpState_enum::MIDDLE
@@ -184,44 +184,35 @@ void LegCoordsGenerator::calcLegCoords(const GaitParam& gaitParam, double dt, bo
   o_swingState = swingState;
 }
 
-void LegCoordsGenerator::calcCOMCoords(const GaitParam& gaitParam, double dt, cnoid::Vector3& o_genNextCog, cnoid::Vector3& o_genNextCogVel, cnoid::Vector3& o_genNextCogAcc) const{
-  cnoid::Vector3 genZmp;
-  if(gaitParam.footstepNodesList[0].isSupportPhase[RLEG] || gaitParam.footstepNodesList[0].isSupportPhase[LLEG]){
-    cnoid::Vector3 genDCM = gaitParam.genCog + gaitParam.genCogVel / gaitParam.omega;
-    genZmp = footguidedcontroller::calcFootGuidedControl(gaitParam.omega,gaitParam.l,genDCM,gaitParam.refZmpTraj);
-    if(genZmp[2] >= gaitParam.genCog[2]) genZmp = gaitParam.genCog; // 下向きの力は受けられないので
-    else{
-      cnoid::Vector3 genZmpOrg = genZmp;
-      // truncate zmp inside polygon.
-      std::vector<cnoid::Vector3> vertices; // generate frame. 支持点の集合
-      for(int i=0;i<NUM_LEGS;i++){
-        if(!gaitParam.footstepNodesList[0].isSupportPhase[i]) continue;
-        for(int j=0;j<gaitParam.legHull[i].size();j++){
-          cnoid::Vector3 p = gaitParam.genCoords[i].value()*gaitParam.legHull[i][j];
-          if(p[2] > gaitParam.actCog[2] - 1e-2) p[2] = gaitParam.actCog[2] - 1e-2; // 重心よりも支持点が高いと射影が破綻するので
-          vertices.push_back(p);
-        }
-      }
-      genZmp = mathutil::calcInsidePointOfPolygon3D(genZmp,vertices,gaitParam.genCog - cnoid::Vector3(gaitParam.l[0],gaitParam.l[1], 0.0));
-      //zmpがpolygon外に出たとしてもcogを進行方向に少しでもいいから動かす. そうしないとcogが無限遠に発散する恐れあり.
-      for(int i=0;i<2;i++){
-        if((genZmpOrg[i]-gaitParam.genCog[i]+gaitParam.l[i]) > 0.001){
-          if((genZmp[i]-gaitParam.genCog[i]+gaitParam.l[i]) < 0.001) genZmp[i] = gaitParam.genCog[i] - gaitParam.l[i] + 0.001;
-        }else if((genZmpOrg[i]-gaitParam.genCog[i]+gaitParam.l[i]) < -0.001){
-          if((genZmp[i]-gaitParam.genCog[i]+gaitParam.l[i]) > -0.001) genZmp[i] = gaitParam.genCog[i] - gaitParam.l[i] - 0.001;
-        }
-      }
-      // TODO 角運動量オフセット
-    }
-  }else{ // 跳躍期
-    genZmp = gaitParam.genCog;
-  }
-  cnoid::Vector3 genNextCog,genNextCogVel,genNextCogAcc,genNextForce;
-  footguidedcontroller::updateState(gaitParam.omega,gaitParam.l,gaitParam.genCog,gaitParam.genCogVel,genZmp,gaitParam.genRobot->mass(),dt,
-                                    genNextCog, genNextCogVel, genNextCogAcc, genNextForce);
-  o_genNextCog = genNextCog;
-  o_genNextCogVel = genNextCogVel;
-  o_genNextCogAcc = genNextCogAcc;
+void LegCoordsGenerator::calcEETargetPose(const GaitParam& gaitParam, double dt,
+                                          std::vector<cnoid::Position>& o_abcEETargetPose, std::vector<cnoid::Vector6>& o_abcEETargetVel, std::vector<cnoid::Vector6>& o_abcEETargetAcc) const{
+  for(int i=0;i<gaitParam.eeName.size();i++){
+    cnoid::Position prevPose = gaitParam.abcEETargetPose[i];
+    cnoid::Vector6 prevVel = gaitParam.abcEETargetVel[i];
 
+    cnoid::Position targetPose;
+    cnoid::Vector6 targetVel;
+    cnoid::Vector6 targetAcc;
+
+    if(i<NUM_LEGS){
+      gaitParam.genCoords[i].value(targetPose, targetVel, targetAcc);
+    }else{
+      targetPose = gaitParam.icEETargetPose[i];
+      if(this->isInitial) targetVel.setZero();
+      else {
+        targetVel.head<3>() = (targetPose.translation() - prevPose.translation()) / dt;
+        Eigen::AngleAxisd dR(targetPose.linear() * prevPose.linear().transpose());  // generate frame.
+        targetVel.tail<3>() = dR.angle() / dt * dR.axis();
+      }
+      if(this->isInitial) targetAcc.setZero();
+      else targetAcc = (targetVel - prevVel) / dt;
+    }
+
+    o_abcEETargetPose[i] = targetPose;
+    o_abcEETargetVel[i] = targetVel;
+    o_abcEETargetAcc[i] = targetAcc;
+  }
+
+  this->isInitial = false;
   return;
 }

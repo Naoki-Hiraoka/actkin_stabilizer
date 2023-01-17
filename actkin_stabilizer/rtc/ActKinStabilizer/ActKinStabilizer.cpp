@@ -149,16 +149,31 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
       this->gaitParam_.maxTorque[i] = std::max(climit * gearRatio * torqueConst, 0.0);
     }
     std::string jointLimitTableStr; this->getProperty("joint_limit_table",jointLimitTableStr);
-    std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.genRobot, jointLimitTableStr);
-    for(size_t i=0;i<jointLimitTables.size();i++){
-      // apply margin
-      for(size_t j=0;j<jointLimitTables[i]->lLimitTable().size();j++){
-        if(jointLimitTables[i]->uLimitTable()[j] - jointLimitTables[i]->lLimitTable()[j] > 0.002){
-          jointLimitTables[i]->uLimitTable()[j] -= 0.001;
-          jointLimitTables[i]->lLimitTable()[j] += 0.001;
+    {
+      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.genRobot, jointLimitTableStr);
+      for(size_t i=0;i<jointLimitTables.size();i++){
+        // apply margin
+        for(size_t j=0;j<jointLimitTables[i]->lLimitTable().size();j++){
+          if(jointLimitTables[i]->uLimitTable()[j] - jointLimitTables[i]->lLimitTable()[j] > 0.002){
+            jointLimitTables[i]->uLimitTable()[j] -= 0.001;
+            jointLimitTables[i]->lLimitTable()[j] += 0.001;
+          }
         }
+        this->gaitParam_.jointLimitTables[jointLimitTables[i]->getSelfJoint()->jointId()].push_back(jointLimitTables[i]);
       }
-      this->gaitParam_.jointLimitTables[jointLimitTables[i]->getSelfJoint()->jointId()].push_back(jointLimitTables[i]);
+    }
+    {
+      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTablesTqc = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.actRobotTqc, jointLimitTableStr);
+      for(size_t i=0;i<jointLimitTablesTqc.size();i++){
+        // apply margin
+        for(size_t j=0;j<jointLimitTablesTqc[i]->lLimitTable().size();j++){
+          if(jointLimitTablesTqc[i]->uLimitTable()[j] - jointLimitTablesTqc[i]->lLimitTable()[j] > 0.002){
+            jointLimitTablesTqc[i]->uLimitTable()[j] -= 0.001;
+            jointLimitTablesTqc[i]->lLimitTable()[j] += 0.001;
+          }
+        }
+        this->gaitParam_.jointLimitTablesTqc[jointLimitTablesTqc[i]->getSelfJoint()->jointId()].push_back(jointLimitTablesTqc[i]);
+      }
     }
 
     // apply margin to jointlimit
@@ -323,10 +338,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   for(int i=0;i<this->gaitParam_.eeName.size();i++) this->impedanceController_.push_backEE();
 
   // init Stabilizer
-  this->stabilizer_.init(this->gaitParam_, this->gaitParam_.actRobotTqc);
-
-  // init FullbodyIKSolver
-  this->fullbodyIKSolver_.init(this->gaitParam_.genRobot, this->gaitParam_);
+  this->stabilizer_.init(this->gaitParam_, this->gaitParam_.actRobotTqc, this->gaitParam_.genRobot);
 
   // initialize parameters
   this->loop_ = 0;
@@ -341,8 +353,16 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
     ports.m_qRefIn_.read();
     if(ports.m_qRef_.data.length() == refRobotRaw->numJoints()){
       for(int i=0;i<ports.m_qRef_.data.length();i++){
-        if(std::isfinite(ports.m_qRef_.data[i])) refRobotRaw->joint(i)->q() = ports.m_qRef_.data[i];
-        else std::cerr << "m_qRef is not finite!" << std::endl;
+        if(std::isfinite(ports.m_qRef_.data[i])) {
+          double q = ports.m_qRef_.data[i];
+          double dq = (q - refRobotRaw->joint(i)->q()) / dt; // 指令関節角度はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する. 初回のloopのときに値がとんでしまうが、MODE_IDLE状態なので問題ない
+          double ddq = (dq - refRobotRaw->joint(i)->dq()) / dt; // 指令関節角度はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する
+          refRobotRaw->joint(i)->q() = q;
+          refRobotRaw->joint(i)->dq() = dq;
+          refRobotRaw->joint(i)->ddq() = ddq;
+        }else{
+          std::cerr << "m_qRef is not finite!" << std::endl;
+        }
       }
       qRef_updated = true;
     }
@@ -359,9 +379,12 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
   if(ports.m_refBasePosIn_.isNew()){
     ports.m_refBasePosIn_.read();
     if(std::isfinite(ports.m_refBasePos_.data.x) && std::isfinite(ports.m_refBasePos_.data.y) && std::isfinite(ports.m_refBasePos_.data.z)){
-      refRobotRaw->rootLink()->p()[0] = ports.m_refBasePos_.data.x;
-      refRobotRaw->rootLink()->p()[1] = ports.m_refBasePos_.data.y;
-      refRobotRaw->rootLink()->p()[2] = ports.m_refBasePos_.data.z;
+      cnoid::Vector3 p(ports.m_refBasePos_.data.x,ports.m_refBasePos_.data.y,ports.m_refBasePos_.data.z);
+      cnoid::Vector3 v = (p - refRobotRaw->rootLink()->p()) / dt;  // 指令ルート位置はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する. 初回のloopのときに値がとんでしまうが、MODE_IDLE状態なので問題ない
+      cnoid::Vector3 dv = (v - refRobotRaw->rootLink()->v()) / dt;  // 指令ルート位置はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する
+      refRobotRaw->rootLink()->p() = p;
+      refRobotRaw->rootLink()->v() = v;
+      refRobotRaw->rootLink()->dv() = dv;
     } else {
       std::cerr << "m_refBasePos is not finite!" << std::endl;
     }
@@ -369,13 +392,18 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
   if(ports.m_refBaseRpyIn_.isNew()){
     ports.m_refBaseRpyIn_.read();
     if(std::isfinite(ports.m_refBaseRpy_.data.r) && std::isfinite(ports.m_refBaseRpy_.data.p) && std::isfinite(ports.m_refBaseRpy_.data.y)){
-      refRobotRaw->rootLink()->R() = cnoid::rotFromRpy(ports.m_refBaseRpy_.data.r, ports.m_refBaseRpy_.data.p, ports.m_refBaseRpy_.data.y);
+      cnoid::Matrix3 R = cnoid::rotFromRpy(ports.m_refBaseRpy_.data.r, ports.m_refBaseRpy_.data.p, ports.m_refBaseRpy_.data.y);
+      Eigen::AngleAxisd dR(R * refRobotRaw->rootLink()->R().transpose());  // reference frame.
+      cnoid::Vector3 w = dR.angle() / dt * dR.axis(); // 指令ルート姿勢はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する. 初回のloopのときに値がとんでしまうが、MODE_IDLE状態なので問題ない
+      cnoid::Vector3 dw = (w - refRobotRaw->rootLink()->w()) / dt; // 指令ルート姿勢はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する
+      refRobotRaw->rootLink()->R() = R;
+      refRobotRaw->rootLink()->w() = w;
+      refRobotRaw->rootLink()->dw() = dw;
     } else {
       std::cerr << "m_refBaseRpy is not finite!" << std::endl;
     }
   }
   refRobotRaw->calcForwardKinematics();
-  refRobotRaw->calcCenterOfMass();
 
   for(int i=0;i<ports.m_refEEWrenchIn_.size();i++){
     if(ports.m_refEEWrenchIn_[i]->isNew()){
@@ -440,7 +468,6 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
     }
   }
   actRobotRaw->calcForwardKinematics();
-  actRobotRaw->calcCenterOfMass();
 
   cnoid::DeviceList<cnoid::ForceSensor> forceSensors(actRobotRaw->devices());
   for(int i=0;i<ports.m_actWrenchIn_.size();i++){
@@ -559,20 +586,20 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
 }
 
 // static function
-bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const FullbodyIKSolver& fullbodyIKSolver,const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator) {
-  if(mode.isSyncToABCInit()){ // startActKinBalancer直後の初回. gaitParamのリセット
+bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator) {
+  if(mode.isSyncToABCInit()){ // startAutoBalancer直後の初回. gaitParamのリセット
     refToGenFrameConverter.initGenRobot(gaitParam,
-                                        gaitParam.genRobot, gaitParam.footMidCoords, gaitParam.genCogVel, gaitParam.genCogAcc);
+                                        gaitParam.genRobot, gaitParam.footMidCoords, gaitParam.genCog, gaitParam.genCogVel, gaitParam.genCogAcc);
+    actToGenFrameConverter.initOutput(gaitParam,
+                                      gaitParam.actCogVel, gaitParam.actRootVel);
     externalForceHandler.initExternalForceHandlerOutput(gaitParam,
-                                                        gaitParam.omega, gaitParam.l, gaitParam.sbpOffset, gaitParam.genCog);
+                                                        gaitParam.omega, gaitParam.l);
     impedanceController.initImpedanceOutput(gaitParam,
                                             gaitParam.icEEOffset);
     footStepGenerator.initFootStepNodesList(gaitParam,
                                             gaitParam.footstepNodesList, gaitParam.srcCoords, gaitParam.dstCoordsOrg, gaitParam.remainTimeOrg, gaitParam.swingState, gaitParam.elapsedTime, gaitParam.prevSupportPhase);
     legCoordsGenerator.initLegCoords(gaitParam,
                                      gaitParam.refZmpTraj, gaitParam.genCoords);
-    stabilizer.initStabilizerOutput(gaitParam,
-                                    gaitParam.stOffsetRootRpy, gaitParam.stTargetZmp, gaitParam.stServoPGainPercentage, gaitParam.stServoDGainPercentage);
   }
 
   // FootOrigin座標系を用いてrefRobotRawをgenerate frameに投影しrefRobotとする
@@ -581,11 +608,11 @@ bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode&
 
   // FootOrigin座標系を用いてactRobotRawをgenerate frameに投影しactRobotとする
   actToGenFrameConverter.convertFrame(gaitParam, dt,
-                                      gaitParam.actRobot, gaitParam.actEEPose, gaitParam.actEEWrench, gaitParam.actCogVel);
+                                      gaitParam.actRobot, gaitParam.actEEPose, gaitParam.actEEWrench, gaitParam.actCog, gaitParam.actCogVel, gaitParam.actRootVel);
 
   // 目標外力に応じてオフセットを計算する
   externalForceHandler.handleExternalForce(gaitParam, mode.isSTRunning(), dt,
-                                           gaitParam.omega, gaitParam.l, gaitParam.sbpOffset, gaitParam.actCog);
+                                           gaitParam.omega, gaitParam.l);
 
   // Impedance Controller
   impedanceController.calcImpedanceControl(dt, gaitParam,
@@ -607,46 +634,44 @@ bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode&
                                   gaitParam.footstepNodesList);
   legCoordsGenerator.calcLegCoords(gaitParam, dt, mode.isSTRunning(),
                                    gaitParam.refZmpTraj, gaitParam.genCoords, gaitParam.swingState);
-  legCoordsGenerator.calcCOMCoords(gaitParam, dt,
-                                   gaitParam.genCog, gaitParam.genCogVel, gaitParam.genCogAcc);
-  for(int i=0;i<gaitParam.eeName.size();i++){
-    if(i<NUM_LEGS) gaitParam.abcEETargetPose[i] = gaitParam.genCoords[i].value();
-    else gaitParam.abcEETargetPose[i] = gaitParam.icEETargetPose[i];
-  }
+  legCoordsGenerator.calcEETargetPose(gaitParam, dt,
+                                      gaitParam.abcEETargetPose, gaitParam.abcEETargetVel, gaitParam.abcEETargetAcc);
 
   // Stabilizer
-  if(mode.isSyncToStopSTInit()){ // stopST直後の初回
-    gaitParam.stOffsetRootRpy.setGoal(cnoid::Vector3::Zero(),mode.remainTime());
-    for(int i=0;i<gaitParam.genRobot->numJoints();i++){
-      if(gaitParam.stServoPGainPercentage[i].getGoal() != 100.0) gaitParam.stServoPGainPercentage[i].setGoal(100.0, mode.remainTime());
-      if(gaitParam.stServoDGainPercentage[i].getGoal() != 100.0) gaitParam.stServoDGainPercentage[i].setGoal(100.0, mode.remainTime());
-    }
-  }
   stabilizer.execStabilizer(gaitParam, dt, mode.isSTRunning(),
-                            gaitParam.actRobotTqc, gaitParam.stOffsetRootRpy, gaitParam.stTargetRootPose, gaitParam.stTargetZmp, gaitParam.stEETargetWrench, gaitParam.stServoPGainPercentage, gaitParam.stServoDGainPercentage);
-
-  // FullbodyIKSolver
-  fullbodyIKSolver.solveFullbodyIK(dt, gaitParam,// input
-                                   gaitParam.genRobot); // output
+                            gaitParam.debugData, //for log
+                            gaitParam.actRobotTqc, gaitParam.genRobot, gaitParam.genCog, gaitParam.genCogVel, gaitParam.genCogAcc);
 
   return true;
 }
 
 // static function
-bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam){
+bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, cpp_filters::TwoPointInterpolator<double>& abcToStTransitionInterpolator, double dt, const GaitParam& gaitParam){
   if(mode.isSyncToABC()){
     if(mode.isSyncToABCInit()){
       idleToAbcTransitionInterpolator.reset(0.0);
+      idleToAbcTransitionInterpolator.setGoal(1.0,mode.remainTime());
     }
-    idleToAbcTransitionInterpolator.setGoal(1.0,mode.remainTime());
-    idleToAbcTransitionInterpolator.interpolate(dt);
   }else if(mode.isSyncToIdle()){
     if(mode.isSyncToIdleInit()){
       idleToAbcTransitionInterpolator.reset(1.0);
+      idleToAbcTransitionInterpolator.setGoal(0.0,mode.remainTime());
     }
-    idleToAbcTransitionInterpolator.setGoal(0.0,mode.remainTime());
-    idleToAbcTransitionInterpolator.interpolate(dt);
   }
+  idleToAbcTransitionInterpolator.interpolate(dt);
+
+  if(mode.isSyncToST()){
+    if(mode.isSyncToSTInit()){
+      abcToStTransitionInterpolator.reset(0.0);
+      abcToStTransitionInterpolator.setGoal(1.0,mode.remainTime());
+    }
+  }else if(mode.isSyncToStopST()){
+    if(mode.isSyncToStopSTInit()){
+      abcToStTransitionInterpolator.reset(1.0);
+      abcToStTransitionInterpolator.setGoal(0.0,mode.remainTime());
+    }
+  }
+  abcToStTransitionInterpolator.interpolate(dt);
 
   {
     // q
@@ -682,13 +707,15 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
         else std::cerr << "m_genTau is not finite!" << std::endl;
       }else if(mode.isSyncToABC() || mode.isSyncToIdle()){
         double ratio = idleToAbcTransitionInterpolator.value();
-        double value = gaitParam.refRobotRaw->joint(i)->u() * (1.0 - ratio) + gaitParam.actRobotTqc->joint(i)->u() * ratio;
+        double value = gaitParam.refRobotRaw->joint(i)->u() * (1.0 - ratio);
         if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
         else std::cerr << "m_genTau is not finite!" << std::endl;
-      }else{
+      }else if(mode.isSTRunning()){
         double value = gaitParam.actRobotTqc->joint(i)->u();
         if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
         else std::cerr << "m_genTau is not finite!" << std::endl;
+      }else{
+        ports.m_genTau_.data[i] = 0.0; // stopST補間中は、tauを少しずつ0に減らして行きたくなるが、吹っ飛ぶことがあるので一気に0にした方が安全
       }
     }
     ports.m_genTauOut_.write();
@@ -780,19 +807,9 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
         // pass
       }else{
         // Stabilizerが動いている間にonDeactivated()->onActivated()が呼ばれると、ゲインがもとに戻らない. onDeactivated()->onActivated()が呼ばれるのはサーボオン直前で、通常、サーボオン時にゲインを指令するので、問題ない.
-        if(gaitParam.stServoPGainPercentage[i].remain_time() > 0.0 && gaitParam.stServoPGainPercentage[i].current_time() <= dt) { // 補間が始まった初回
-          if(std::isfinite(gaitParam.stServoPGainPercentage[i].getGoal()) && std::isfinite(gaitParam.stServoPGainPercentage[i].goal_time())){
-            ports.m_robotHardwareService0_->setServoPGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),gaitParam.stServoPGainPercentage[i].getGoal(),gaitParam.stServoPGainPercentage[i].goal_time());
-          }else{
-            std::cerr << "setServoPGainPercentageWithTime is not finite!" << std::endl;
-          }
-        }
-        if(gaitParam.stServoDGainPercentage[i].remain_time() > 0.0 && gaitParam.stServoDGainPercentage[i].current_time() <= dt) { // 補間が始まった初回
-          if(std::isfinite(gaitParam.stServoDGainPercentage[i].getGoal()) && std::isfinite(gaitParam.stServoDGainPercentage[i].goal_time())){
-            ports.m_robotHardwareService0_->setServoDGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),gaitParam.stServoDGainPercentage[i].getGoal(),gaitParam.stServoDGainPercentage[i].goal_time());
-          }else{
-            std::cerr << "setServoDGainPercentageWithTime is not finite!" << std::endl;
-          }
+        if(abcToStTransitionInterpolator.remain_time() > 0.0 && abcToStTransitionInterpolator.current_time() <= dt) { // 補間が始まった初回
+          ports.m_robotHardwareService0_->setServoPGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),(1.0-abcToStTransitionInterpolator.getGoal())*100.0,abcToStTransitionInterpolator.goal_time());
+          ports.m_robotHardwareService0_->setServoDGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),(1.0-abcToStTransitionInterpolator.getGoal())*100.0,abcToStTransitionInterpolator.goal_time());
         }
       }
     }
@@ -856,9 +873,9 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
     ports.m_genZmp_.data.z = gaitParam.refZmpTraj[0].getStart()[2];
     ports.m_genZmpOut_.write();
     ports.m_tgtZmp_.tm = ports.m_qRef_.tm;
-    ports.m_tgtZmp_.data.x = gaitParam.stTargetZmp[0];
-    ports.m_tgtZmp_.data.y = gaitParam.stTargetZmp[1];
-    ports.m_tgtZmp_.data.z = gaitParam.stTargetZmp[2];
+    ports.m_tgtZmp_.data.x = gaitParam.debugData.stTargetZmp[0];
+    ports.m_tgtZmp_.data.y = gaitParam.debugData.stTargetZmp[1];
+    ports.m_tgtZmp_.data.z = gaitParam.debugData.stTargetZmp[2];
     ports.m_tgtZmpOut_.write();
     ports.m_actCog_.tm = ports.m_qRef_.tm;
     ports.m_actCog_.data.x = gaitParam.actCog[0];
@@ -943,7 +960,7 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
     for(int i=0;i<gaitParam.eeName.size();i++){
       ports.m_tgtEEWrench_[i].tm = ports.m_qRef_.tm;
       ports.m_tgtEEWrench_[i].data.length(6);
-      for(int j=0;j<6;j++) ports.m_tgtEEWrench_[i].data[j] = gaitParam.stEETargetWrench[i][j];
+      for(int j=0;j<6;j++) ports.m_tgtEEWrench_[i].data[j] = gaitParam.debugData.stEETargetWrench[i][j];
       ports.m_tgtEEWrenchOut_[i]->write();
     }
   }
@@ -959,25 +976,27 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
 
   if(!ActKinStabilizer::readInPortData(this->dt_, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.selfCollision, this->gaitParam_.steppableRegion, this->gaitParam_.steppableHeight, this->gaitParam_.relLandingHeight, this->gaitParam_.relLandingNormal)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
 
+  // 内部補間器を進める
   this->mode_.update(this->dt_);
   this->gaitParam_.update(this->dt_);
   this->refToGenFrameConverter_.update(this->dt_);
-  this->fullbodyIKSolver_.update(this->dt_);
+  this->stabilizer_.update(this->dt_);
 
   if(this->mode_.isABCRunning()) {
-    if(this->mode_.isSyncToABCInit()){ // startActKinBalancer直後の初回. 内部パラメータのリセット
+    if(this->mode_.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
       this->gaitParam_.reset();
       this->refToGenFrameConverter_.reset();
       this->actToGenFrameConverter_.reset();
       this->externalForceHandler_.reset();
       this->footStepGenerator_.reset();
       this->impedanceController_.reset();
-      this->fullbodyIKSolver_.reset();
+      this->legCoordsGenerator_.reset();
+      this->stabilizer_.reset();
     }
-    ActKinStabilizer::execActKinStabilizer(this->mode_, this->gaitParam_, this->dt_, this->footStepGenerator_, this->legCoordsGenerator_, this->refToGenFrameConverter_, this->actToGenFrameConverter_, this->impedanceController_, this->stabilizer_,this->externalForceHandler_, this->fullbodyIKSolver_, this->legManualController_, this->cmdVelGenerator_);
+    ActKinStabilizer::execActKinStabilizer(this->mode_, this->gaitParam_, this->dt_, this->footStepGenerator_, this->legCoordsGenerator_, this->refToGenFrameConverter_, this->actToGenFrameConverter_, this->impedanceController_, this->stabilizer_,this->externalForceHandler_, this->legManualController_, this->cmdVelGenerator_);
   }
 
-  ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, this->idleToAbcTransitionInterpolator_, this->dt_, this->gaitParam_);
+  ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, this->idleToAbcTransitionInterpolator_, this->abcToStTransitionInterpolator_, this->dt_, this->gaitParam_);
 
   return RTC::RTC_OK;
 }
@@ -1131,7 +1150,7 @@ bool ActKinStabilizer::startStabilizer(void){
     usleep(1000);
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
     return false;
   }
 }
@@ -1142,7 +1161,7 @@ bool ActKinStabilizer::stopStabilizer(void){
     usleep(1000);
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
     return false;
   }
 }
@@ -1185,7 +1204,7 @@ bool ActKinStabilizer::stopImpedanceController(const std::string& i_name){
     std::cerr << "[" << this->m_profile.instance_name << "] Could not found impedance controller param [" << i_name << "]" << std::endl;
     return false;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
     return false;
   }
 }
@@ -1204,7 +1223,7 @@ bool ActKinStabilizer::startWholeBodyMasterSlave(void){
     std::cerr << "[" << this->m_profile.instance_name << "] Start WholeBodyMasterSlave" << std::endl;
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
     return false;
   }
 }
@@ -1219,7 +1238,7 @@ bool ActKinStabilizer::stopWholeBodyMasterSlave(void){
     std::cerr << "[" << this->m_profile.instance_name << "] Stop WholeBodyMasterSlave" << std::endl;
     return true;
   }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
+    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
     return false;
   }
 }
@@ -1288,9 +1307,13 @@ bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinS
     }
   }
 
-  if((this->refToGenFrameConverter_.handFixMode.getGoal() == 1.0) != i_param.is_hand_fix_mode) {
-    if(this->mode_.isABCRunning()) this->refToGenFrameConverter_.handFixMode.setGoal(i_param.is_hand_fix_mode ? 1.0 : 0.0, 1.0); // 1.0[s]で補間
-    else this->refToGenFrameConverter_.handFixMode.reset(i_param.is_hand_fix_mode ? 1.0 : 0.0);
+  if((this->refToGenFrameConverter_.handFixModeX.getGoal() == 1.0) != i_param.is_hand_fix_mode_x) {
+    if(this->mode_.isABCRunning()) this->refToGenFrameConverter_.handFixModeX.setGoal(i_param.is_hand_fix_mode_x ? 1.0 : 0.0, 1.0); // 1.0[s]で補間
+    else this->refToGenFrameConverter_.handFixModeX.reset(i_param.is_hand_fix_mode_x ? 1.0 : 0.0);
+  }
+  if((this->refToGenFrameConverter_.handFixModeY.getGoal() == 1.0) != i_param.is_hand_fix_mode) {
+    if(this->mode_.isABCRunning()) this->refToGenFrameConverter_.handFixModeY.setGoal(i_param.is_hand_fix_mode ? 1.0 : 0.0, 1.0); // 1.0[s]で補間
+    else this->refToGenFrameConverter_.handFixModeY.reset(i_param.is_hand_fix_mode ? 1.0 : 0.0);
   }
   if(i_param.reference_frame.length() == NUM_LEGS && (i_param.reference_frame[RLEG] || i_param.reference_frame[LLEG])){
     for(int i=0;i<NUM_LEGS;i++) {
@@ -1443,48 +1466,58 @@ bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinS
   this->legCoordsGenerator_.previewStepNum = std::max(i_param.preview_step_num, 2);
   this->legCoordsGenerator_.footGuidedBalanceTime = std::max(i_param.footguided_balance_time, 0.01);
 
-  if(i_param.eefm_body_attitude_control_gain.length() == 2 &&
-     i_param.eefm_body_attitude_control_time_const.length() == 2 &&
-     i_param.eefm_body_attitude_control_compensation_limit.length() == 2){
-    for(int i=0;i<2;i++) {
-      this->stabilizer_.bodyAttitudeControlGain[i] = std::max(i_param.eefm_body_attitude_control_gain[i], 0.0);
-      this->stabilizer_.bodyAttitudeControlTimeConst[i] = std::max(i_param.eefm_body_attitude_control_time_const[i], 0.01);
-      if(!this->mode_.isSTRunning()) this->stabilizer_.bodyAttitudeControlCompensationLimit[i] = std::max(i_param.eefm_body_attitude_control_compensation_limit[i], 0.0);
-    }
-  }
-
-  this->stabilizer_.swing2LandingTransitionTime = std::max(i_param.swing2landing_transition_time, 0.01);
-  this->stabilizer_.landing2SupportTransitionTime = std::max(i_param.landing2support_transition_time, 0.01);
-  this->stabilizer_.support2SwingTransitionTime = std::max(i_param.support2swing_transition_time, 0.01);
-  if(i_param.support_pgain.length() == NUM_LEGS &&
-     i_param.support_dgain.length() == NUM_LEGS &&
-     i_param.landing_pgain.length() == NUM_LEGS &&
-     i_param.landing_dgain.length() == NUM_LEGS &&
-     i_param.swing_pgain.length() == NUM_LEGS &&
-     i_param.swing_dgain.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      if(i_param.support_pgain[i].length() == this->stabilizer_.supportPgain[i].size() &&
-         i_param.support_dgain[i].length() == this->stabilizer_.supportPgain[i].size() &&
-         i_param.landing_pgain[i].length() == this->stabilizer_.supportPgain[i].size() &&
-         i_param.landing_dgain[i].length() == this->stabilizer_.supportPgain[i].size() &&
-         i_param.swing_pgain[i].length() == this->stabilizer_.supportPgain[i].size() &&
-         i_param.swing_dgain[i].length() == this->stabilizer_.supportPgain[i].size()){
-        for(int j=0;j<this->stabilizer_.supportPgain[i].size();j++){
-          this->stabilizer_.supportPgain[i][j] = std::min(std::max(i_param.support_pgain[i][j], 0.0), 100.0);
-          this->stabilizer_.supportDgain[i][j] = std::min(std::max(i_param.support_dgain[i][j], 0.0), 100.0);
-          this->stabilizer_.landingPgain[i][j] = std::min(std::max(i_param.landing_pgain[i][j], 0.0), 100.0);
-          this->stabilizer_.landingDgain[i][j] = std::min(std::max(i_param.landing_dgain[i][j], 0.0), 100.0);
-          this->stabilizer_.swingPgain[i][j] = std::min(std::max(i_param.swing_pgain[i][j], 0.0), 100.0);
-          this->stabilizer_.swingDgain[i][j] = std::min(std::max(i_param.swing_dgain[i][j], 0.0), 100.0);
+  if(i_param.ee_p.length() == this->gaitParam_.eeName.size() &&
+     i_param.ee_d.length() == this->gaitParam_.eeName.size()){
+    for(int i=0;i<this->gaitParam_.eeName.size();i++){
+      if(i_param.ee_p[i].length() == this->stabilizer_.ee_K[i].size() &&
+         i_param.ee_d[i].length() == this->stabilizer_.ee_D[i].size()){
+        for(int j=0;j<this->stabilizer_.ee_K[i].size();j++){
+          this->stabilizer_.ee_K[i][j] = std::max(i_param.ee_p[i][j], 0.0);
+          this->stabilizer_.ee_D[i][j] = std::max(i_param.ee_d[i][j], 0.0);
         }
       }
     }
   }
-
-  if(i_param.dq_weight.length() == this->fullbodyIKSolver_.dqWeight.size()){
-    for(int i=0;i<this->fullbodyIKSolver_.dqWeight.size();i++){
+  if(i_param.ee_support_d.length() == NUM_LEGS &&
+     i_param.ee_landing_p.length() == NUM_LEGS &&
+     i_param.ee_landing_d.length() == NUM_LEGS &&
+     i_param.ee_swing_p.length() == NUM_LEGS &&
+     i_param.ee_swing_d.length() == NUM_LEGS){
+    for(int i=0;i<NUM_LEGS;i++){
+      if(i_param.ee_support_d[i].length() == this->stabilizer_.ee_support_D[i].size() &&
+         i_param.ee_landing_p[i].length() == this->stabilizer_.ee_landing_K[i].size() &&
+         i_param.ee_landing_d[i].length() == this->stabilizer_.ee_landing_D[i].size() &&
+         i_param.ee_swing_p[i].length() == this->stabilizer_.ee_swing_K[i].size() &&
+         i_param.ee_swing_d[i].length() == this->stabilizer_.ee_swing_D[i].size()){
+        for(int j=0;j<this->stabilizer_.ee_support_D[i].size();j++){
+          this->stabilizer_.ee_support_D[i][j] = std::max(i_param.ee_support_d[i][j], 0.0);
+          this->stabilizer_.ee_landing_K[i][j] = std::max(i_param.ee_landing_p[i][j], 0.0);
+          this->stabilizer_.ee_landing_D[i][j] = std::max(i_param.ee_landing_d[i][j], 0.0);
+          this->stabilizer_.ee_swing_K[i][j] = std::max(i_param.ee_swing_p[i][j], 0.0);
+          this->stabilizer_.ee_swing_D[i][j] = std::max(i_param.ee_swing_d[i][j], 0.0);
+        }
+      }
+    }
+  }
+  if(i_param.root_p.length() == 3 &&
+     i_param.root_d.length() == 3){
+    for(int i=0;i<3;i++) {
+      this->stabilizer_.root_K[i] = std::max(i_param.root_p[i], 0.0);
+      this->stabilizer_.root_D[i] = std::max(i_param.root_d[i], 0.0);
+    }
+  }
+  this->stabilizer_.joint_K = std::max(i_param.joint_p, 0.0);
+  this->stabilizer_.joint_D = std::max(i_param.joint_d, 0.0);
+  if(i_param.st_dq_weight.length() == this->stabilizer_.aikdqWeight.size()){
+    for(int i=0;i<this->stabilizer_.aikdqWeight.size();i++){
+      double value = std::max(0.01, i_param.st_dq_weight[i]);
+      if(value != this->stabilizer_.aikdqWeight[i].getGoal()) this->stabilizer_.aikdqWeight[i].setGoal(value, 2.0); // 2秒で遷移
+    }
+  }
+  if(i_param.dq_weight.length() == this->stabilizer_.ikdqWeight.size()){
+    for(int i=0;i<this->stabilizer_.ikdqWeight.size();i++){
       double value = std::max(0.01, i_param.dq_weight[i]);
-      if(value != this->fullbodyIKSolver_.dqWeight[i].getGoal()) this->fullbodyIKSolver_.dqWeight[i].setGoal(value, 2.0); // 2秒で遷移
+      if(value != this->stabilizer_.ikdqWeight[i].getGoal()) this->stabilizer_.ikdqWeight[i].setGoal(value, 2.0); // 2秒で遷移
     }
   }
 
@@ -1526,7 +1559,8 @@ bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabili
     i_param.is_manual_control_mode[i] = (this->gaitParam_.isManualControlMode[i].getGoal() == 1.0);
   }
 
-  i_param.is_hand_fix_mode = (this->refToGenFrameConverter_.handFixMode.getGoal() == 1.0);
+  i_param.is_hand_fix_mode = (this->refToGenFrameConverter_.handFixModeY.getGoal() == 1.0);
+  i_param.is_hand_fix_mode_x = (this->refToGenFrameConverter_.handFixModeX.getGoal() == 1.0);
   i_param.reference_frame.length(NUM_LEGS);
   for(int i=0;i<NUM_LEGS;i++) {
     i_param.reference_frame[i] = (this->refToGenFrameConverter_.refFootOriginWeight[i].getGoal() == 1.0);
@@ -1656,43 +1690,49 @@ bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabili
   i_param.preview_step_num = this->legCoordsGenerator_.previewStepNum;
   i_param.footguided_balance_time = this->legCoordsGenerator_.footGuidedBalanceTime;
 
-  i_param.eefm_body_attitude_control_gain.length(2);
-  i_param.eefm_body_attitude_control_time_const.length(2);
-  i_param.eefm_body_attitude_control_compensation_limit.length(2);
-  for(int i=0;i<2;i++) {
-    i_param.eefm_body_attitude_control_gain[i] = this->stabilizer_.bodyAttitudeControlGain[i];
-    i_param.eefm_body_attitude_control_time_const[i] = this->stabilizer_.bodyAttitudeControlTimeConst[i];
-    i_param.eefm_body_attitude_control_compensation_limit[i] = this->stabilizer_.bodyAttitudeControlCompensationLimit[i];
-  }
-  i_param.swing2landing_transition_time = this->stabilizer_.swing2LandingTransitionTime;
-  i_param.landing2support_transition_time = this->stabilizer_.landing2SupportTransitionTime;
-  i_param.support2swing_transition_time = this->stabilizer_.support2SwingTransitionTime;
-  i_param.support_pgain.length(NUM_LEGS);
-  i_param.support_dgain.length(NUM_LEGS);
-  i_param.landing_pgain.length(NUM_LEGS);
-  i_param.landing_dgain.length(NUM_LEGS);
-  i_param.swing_pgain.length(NUM_LEGS);
-  i_param.swing_dgain.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.support_pgain[i].length(this->stabilizer_.supportPgain[i].size());
-    i_param.support_dgain[i].length(this->stabilizer_.supportPgain[i].size());
-    i_param.landing_pgain[i].length(this->stabilizer_.supportPgain[i].size());
-    i_param.landing_dgain[i].length(this->stabilizer_.supportPgain[i].size());
-    i_param.swing_pgain[i].length(this->stabilizer_.supportPgain[i].size());
-    i_param.swing_dgain[i].length(this->stabilizer_.supportPgain[i].size());
-    for(int j=0;j<this->stabilizer_.supportPgain[i].size();j++){
-      i_param.support_pgain[i][j] = this->stabilizer_.supportPgain[i][j];
-      i_param.support_dgain[i][j] = this->stabilizer_.supportDgain[i][j];
-      i_param.landing_pgain[i][j] = this->stabilizer_.landingPgain[i][j];
-      i_param.landing_dgain[i][j] = this->stabilizer_.landingDgain[i][j];
-      i_param.swing_pgain[i][j] = this->stabilizer_.swingPgain[i][j];
-      i_param.swing_dgain[i][j] = this->stabilizer_.swingDgain[i][j];
+  i_param.ee_p.length(this->gaitParam_.eeName.size());
+  i_param.ee_d.length(this->gaitParam_.eeName.size());
+  for(int i=0;i<this->gaitParam_.eeName.size();i++){
+    i_param.ee_p[i].length(6);
+    i_param.ee_d[i].length(6);
+    for(int j=0;j<6;j++){
+      i_param.ee_p[i][j] = this->stabilizer_.ee_K[i][j];
+      i_param.ee_d[i][j] = this->stabilizer_.ee_D[i][j];
     }
   }
+  i_param.ee_support_d.length(NUM_LEGS);
+  i_param.ee_landing_p.length(NUM_LEGS);
+  i_param.ee_landing_d.length(NUM_LEGS);
+  i_param.ee_swing_p.length(NUM_LEGS);
+  i_param.ee_swing_d.length(NUM_LEGS);
+  for(int i=0;i<NUM_LEGS;i++){
+    i_param.ee_support_d[i].length(6);
+    i_param.ee_landing_p[i].length(6);
+    i_param.ee_landing_d[i].length(6);
+    i_param.ee_swing_p[i].length(6);
+    i_param.ee_swing_d[i].length(6);
+    for(int j=0;j<6;j++){
+      i_param.ee_support_d[i][j] = this->stabilizer_.ee_support_D[i][j];
+      i_param.ee_landing_p[i][j] = this->stabilizer_.ee_landing_K[i][j];
+      i_param.ee_landing_d[i][j] = this->stabilizer_.ee_landing_D[i][j];
+      i_param.ee_swing_p[i][j] = this->stabilizer_.ee_swing_K[i][j];
+      i_param.ee_swing_d[i][j] = this->stabilizer_.ee_swing_D[i][j];
+    }
+  }
+  i_param.root_p.length(3);
+  for(int i=0;i<3;i++) i_param.root_p[i] = this->stabilizer_.root_K[i];
+  i_param.root_d.length(3);
+  for(int i=0;i<3;i++) i_param.root_d[i] = this->stabilizer_.root_D[i];
+  i_param.joint_p = this->stabilizer_.joint_K;
+  i_param.joint_d = this->stabilizer_.joint_D;
+  i_param.st_dq_weight.length(this->stabilizer_.aikdqWeight.size());
+  for(int i=0;i<this->stabilizer_.aikdqWeight.size();i++){
+    i_param.st_dq_weight[i] = this->stabilizer_.aikdqWeight[i].getGoal();
+  }
 
-  i_param.dq_weight.length(this->fullbodyIKSolver_.dqWeight.size());
-  for(int i=0;i<this->fullbodyIKSolver_.dqWeight.size();i++){
-    i_param.dq_weight[i] = this->fullbodyIKSolver_.dqWeight[i].getGoal();
+  i_param.dq_weight.length(this->stabilizer_.ikdqWeight.size());
+  for(int i=0;i<this->stabilizer_.ikdqWeight.size();i++){
+    i_param.dq_weight[i] = this->stabilizer_.ikdqWeight[i].getGoal();
   }
 
   return true;

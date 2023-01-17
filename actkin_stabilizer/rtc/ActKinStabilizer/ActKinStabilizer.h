@@ -26,6 +26,7 @@
 
 #include <hrpsys/idl/RobotHardwareService.hh>
 #include <collision_checker_msgs/idl/Collision.hh>
+#include <auto_stabilizer_msgs/idl/AutoStabilizer.hh>
 
 #include "ActKinStabilizerService_impl.h"
 #include "GaitParam.h"
@@ -37,7 +38,6 @@
 #include "ImpedanceController.h"
 #include "Stabilizer.h"
 #include "ExternalForceHandler.h"
-#include "FullbodyIKSolver.h"
 #include "CmdVelGenerator.h"
 
 class ActKinStabilizer : public RTC::DataFlowComponentBase{
@@ -129,7 +129,7 @@ protected:
     ActKinStabilizerService_impl m_service0_;
     RTC::CorbaPort m_ActKinStabilizerServicePort_;
 
-    RTC::CorbaConsumer<actkin_stabilizer::RobotHardwareService> m_robotHardwareService0_;
+    RTC::CorbaConsumer<OpenHRP::RobotHardwareService> m_robotHardwareService0_;
     RTC::CorbaPort m_RobotHardwareServicePort_;
 
 
@@ -174,7 +174,7 @@ protected:
   class ControlMode{
   public:
     /*
-      MODE_IDLE -> startActKinBalancer() -> MODE_SYNC_TO_ABC -> MODE_ABC -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST -> stopStabilizer() -> MODE_SYNC_TO_STOPST -> MODE_ABC -> stopActKinBalancer() -> MODE_SYNC_TO_IDLE -> MODE_IDLE
+      MODE_IDLE -> startAutoBalancer() -> MODE_SYNC_TO_ABC -> MODE_ABC -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST -> stopStabilizer() -> MODE_SYNC_TO_STOPST -> MODE_ABC -> stopAutoBalancer() -> MODE_SYNC_TO_IDLE -> MODE_IDLE
       MODE_SYNC_TO*の時間はtransition_timeの時間をかけて遷移するが、少なくとも1周期はMODE_SYNC_TO*を経由する.
       MODE_SYNC_TO*では、基本的に次のMODEと同じ処理が行われるが、出力時に前回のMODEの出力から補間するような軌道に加工されることで出力の連続性を確保する
       補間している途中で別のmodeに切り替わることは無いので、そこは安心してプログラムを書いてよい(例外はonActivated). 同様に、remainTimeが突然減ったり増えたりすることもない
@@ -186,7 +186,7 @@ protected:
     Mode_enum current, previous, next;
     double remain_time;
   public:
-    ControlMode(){ reset(); abc_start_transition_time = 2.0; abc_stop_transition_time = 2.0; st_start_transition_time = 0.5; st_stop_transition_time = 2.0;}
+    ControlMode(){ reset(); abc_start_transition_time = 2.0; abc_stop_transition_time = 2.0; st_start_transition_time = 0.5; st_stop_transition_time = 0.5;}
     void reset(){ current = previous = next = MODE_IDLE; remain_time = 0;}
     bool setNextTransition(const Transition_enum request){
       switch(request){
@@ -245,12 +245,15 @@ protected:
     bool isSyncToABCInit() const{ return (current != previous) && isSyncToABC();}
     bool isSyncToIdle() const{ return current==MODE_SYNC_TO_IDLE;}
     bool isSyncToIdleInit() const{ return (current != previous) && isSyncToIdle();}
+    bool isSyncToST() const{ return current == MODE_SYNC_TO_ST;}
+    bool isSyncToSTInit() const{ return (current != previous) && isSyncToST();}
     bool isSyncToStopST() const{ return current == MODE_SYNC_TO_STOPST;}
     bool isSyncToStopSTInit() const{ return (current != previous) && isSyncToStopST();}
     bool isSTRunning() const{ return (current==MODE_SYNC_TO_ST) || (current==MODE_ST) ;}
   };
   ControlMode mode_;
   cpp_filters::TwoPointInterpolator<double> idleToAbcTransitionInterpolator_ = cpp_filters::TwoPointInterpolator<double>(0.0, 0.0, 0.0, cpp_filters::LINEAR);
+  cpp_filters::TwoPointInterpolator<double> abcToStTransitionInterpolator_ = cpp_filters::TwoPointInterpolator<double>(0.0, 0.0, 0.0, cpp_filters::LINEAR);
 
   GaitParam gaitParam_;
 
@@ -263,7 +266,6 @@ protected:
   FootStepGenerator footStepGenerator_;
   LegCoordsGenerator legCoordsGenerator_;
   Stabilizer stabilizer_;
-  FullbodyIKSolver fullbodyIKSolver_;
 
 protected:
   // utility functions
@@ -271,8 +273,8 @@ protected:
   static void copyEigenCoords2FootStep(const cnoid::Position& in_fs, actkin_stabilizer::ActKinStabilizerService::Footstep& out_fs);
 
   static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal);
-  static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const FullbodyIKSolver& fullbodyIKSolver, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator);
-  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, double dt, const GaitParam& gaitParam);
+  static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator);
+  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, cpp_filters::TwoPointInterpolator<double>& idleToAbcTransitionInterpolator, cpp_filters::TwoPointInterpolator<double>& abcToStTransitionInterpolator, double dt, const GaitParam& gaitParam);
 };
 
 

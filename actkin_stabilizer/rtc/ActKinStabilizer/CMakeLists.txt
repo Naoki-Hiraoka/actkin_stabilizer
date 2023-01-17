@@ -15,6 +15,9 @@ find_package(catkin REQUIRED COMPONENTS
   joint_limit_table
   collision_checker_msgs
   auto_stabilizer_msgs
+  aik_constraint
+  aik_constraint_joint_limit_table
+  prioritized_acc_inverse_kinematics_solver
   )
 find_package(choreonoid REQUIRED)
 
@@ -40,7 +43,6 @@ add_library(ActKinStabilizer SHARED
   ExternalForceHandler.cpp
   Stabilizer.cpp
   ImpedanceController.cpp
-  FullbodyIKSolver.cpp
   LegManualController.cpp
   CmdVelGenerator.cpp
   MathUtil.cpp
@@ -49,7 +51,7 @@ target_link_libraries(ActKinStabilizer
   ${catkin_LIBRARIES}
   ${CHOREONOID_BODY_LIBRARIES}
   ${openrtm_aist_LIBRARIES}
-  ${${PROJECT_NAME}_IDLLIBRARY_DIRS} # generated from idl in this package
+  ${${PROJECT_NAME}_IDLLIBRARY_DIRS}
   RobotHardwareServiceSkel RobotHardwareServiceStub
   )
 set_target_properties(ActKinStabilizer PROPERTIES PREFIX "")

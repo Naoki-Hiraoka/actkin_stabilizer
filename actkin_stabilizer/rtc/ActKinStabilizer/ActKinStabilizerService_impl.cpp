@@ -29,12 +29,12 @@ CORBA::Boolean ActKinStabilizerService_impl::jumpTo( CORBA::Double x,  CORBA::Do
   return this->comp_->jumpTo(x, y, z, ts, tf);
 };
 
-CORBA::Boolean ActKinStabilizerService_impl::setFootSteps(const OpenHRP::ActKinStabilizerService::FootstepSequence& fs)
+CORBA::Boolean ActKinStabilizerService_impl::setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs)
 {
   return this->comp_->setFootSteps(fs);
 }
 
-CORBA::Boolean ActKinStabilizerService_impl::setFootStepsWithParam(const OpenHRP::ActKinStabilizerService::FootstepSequence& fs, const OpenHRP::ActKinStabilizerService::StepParamSequence& spss)
+CORBA::Boolean ActKinStabilizerService_impl::setFootStepsWithParam(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs, const actkin_stabilizer::ActKinStabilizerService::StepParamSequence& spss)
 {
   return this->comp_->setFootStepsWithParam(fs, spss);
 }
@@ -64,20 +64,20 @@ CORBA::Boolean ActKinStabilizerService_impl::stopStabilizer(void)
   return this->comp_->stopStabilizer();
 }
 
-CORBA::Boolean ActKinStabilizerService_impl::setActKinStabilizerParam(const OpenHRP::ActKinStabilizerService::ActKinStabilizerParam& i_param)
+CORBA::Boolean ActKinStabilizerService_impl::setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param)
 {
   return this->comp_->setActKinStabilizerParam(i_param);
 };
 
-CORBA::Boolean ActKinStabilizerService_impl::getActKinStabilizerParam(OpenHRP::ActKinStabilizerService::ActKinStabilizerParam_out i_param)
+CORBA::Boolean ActKinStabilizerService_impl::getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam_out i_param)
 {
-  i_param = new OpenHRP::ActKinStabilizerService::ActKinStabilizerParam();
+  i_param = new actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam();
   return this->comp_->getActKinStabilizerParam(*i_param);
 };
 
-CORBA::Boolean ActKinStabilizerService_impl::getFootStepState(OpenHRP::ActKinStabilizerService::FootStepState_out i_param)
+CORBA::Boolean ActKinStabilizerService_impl::getFootStepState(actkin_stabilizer::ActKinStabilizerService::FootStepState_out i_param)
 {
-  i_param = new OpenHRP::ActKinStabilizerService::FootStepState();
+  i_param = new actkin_stabilizer::ActKinStabilizerService::FootStepState();
   return this->comp_->getFootStepState(*i_param);
 };
 
