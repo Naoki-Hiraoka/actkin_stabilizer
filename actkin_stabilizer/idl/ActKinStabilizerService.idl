@@ -30,31 +30,63 @@ module actkin_stabilizer
     double timeFromStart;
   };
 
-  /*
-    cog
-      REL_COG: ref_force+footCoordsによる自動制御.
-      TO_CONTACT,TO_AIR,CONTACT: 不可
-   */
+  enum Priority {
+    EE_MIDIUM, // 通常
+    EE_LOW, // 低優先度タスク
+    EE_HIGH // 歩行時の遊脚
+  };
+
+  enum EEFrame {
+    REL_COG,
+    REL_HRPSYS_ODOM
+    // REL_LINK,
+  }
+
   enum EEMode {
     KEEP_PREV, // to controll only
     NOT_CARED,
-    REL_HRPSYS_ODOM,
-    REL_COG,
+    AIR,
     // REL_LINK,
     TO_CONTACT,
     TO_AIR,
     CONTACT
   };
 
-
   struct EEStateIdl
   {
     string name;
     sequence<EEPointIdl> goal;
+    EEFrame frame;
     EEMode mode;
     unsigned long modeId; // 現在のmodeId未満のmodeIdは無視する
     sequence<boolean, 6> isFree; // 分解加速度制御のIKで考慮するか
+    Priority priority; // 分解加速度制御のIKでの優先度
     sequence<boolean, 6> isPassive; // passivityに基づき力を出力するか
+
+    // from controller only
+    RTC::Pose3D actPose;
+  };
+
+  enum COGMode {
+    KEEP_PREV, // to controll only
+    NOT_CARED,
+    MANUAL,
+    AUTO // ref_force+footCoordsによる自動制御. Rとrefdzのみ反映
+  };
+
+  enum COGFrame {
+    REL_REFZMP,
+    REL_HRPSYS_ODOM
+    // REL_LINK,
+  }
+
+  struct COGStateIdl
+  {
+    sequence<EEPointIdl> goal; // posはCOG, Rはroot
+    COGFrame frame;
+    COGMode mode;
+    unsigned long modeId; // 現在のmodeId未満のmodeIdは無視する
+    Priority priority; // 分解加速度制御のIKでの優先度
 
     // from controller only
     RTC::Pose3D actPose;

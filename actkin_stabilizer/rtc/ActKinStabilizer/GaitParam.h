@@ -48,11 +48,23 @@ public:
                        REL_COG,
                        // REL_LINK,
                        TO_CONTACT,
+                       // ここより下、接触状態
                        TO_AIR,
                        CONTACT};
   mode_enum mode = mode_enum::NOT_CARED;
-  unsigned long modeId = 0; // 今のmodeId未満のmodeIdが書かれた指令は無視する.
+  unsigned long modeId = 0; // 今のmodeId未満のmodeIdが書かれたtopicが来ても無視する.
+  /*
+    非接触時、
+     - ikGainのどれかが0->1になる
+     - passivityGainのどれかが0->1になる
+     - priorityが上がる
+    のいずれかが発生する時、refPoseが強制的にgoActualする.
+  */
   cnoid::Vector6 ikGain = cnoid::Vector6::Ones(); // endeffector frame. 0 or 1. 分解加速度制御のIKで考慮するか (非接触時のみ)
+  enum class priority_enum{EE_MIDIUM, // 通常
+                           EE_LOW, // 低優先度タスク
+                           EE_HIGH}; // 歩行時の遊脚
+  priority_enum priority = priority_enum::EE_MIDIUM; // 分解加速度制御のIKの優先度 (非接触時のみ)
   cnoid::Vector6 passivityGain = cnoid::Vector6::Zero(); // endeffector frame. 0 or 1. passivityに基づき力を出力するか (非接触時のみ)
 
   cpp_filters::TwoPointInterpolatorSE3 refPoseLocal = cpp_filters::TwoPointInterpolatorSE3(cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB); // 座標系はmodeによって決まる
@@ -70,6 +82,12 @@ class GaitParam {
 
 public:
   // 中心部
+  enum class wholeBodyState_enum{BIPED, // rleg,lleg以外、接触状態のエンドエフェクタが無い
+                                 MULTI_CONTACT, // rleg,lleg以外に接触状態のエンドエフェクタがある
+                                 DYNAMIC_STEP, // 動歩行中. 移動目的でない
+                                 DYNAMIC_MOVE}; // 動歩行中. 移動目的
+  wholeBodyState_enum wholeBodyState = BIPED;
+
   std::vector<EndEffector> endEffectors; // 要素数2以上. 0番目がrleg, 1番目がllegという名前である必要がある.
 
 public:
