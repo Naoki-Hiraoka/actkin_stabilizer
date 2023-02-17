@@ -49,32 +49,19 @@ public:
   virtual RTC::ReturnCode_t onDeactivated(RTC::UniqueId ec_id);
   virtual RTC::ReturnCode_t onExecute(RTC::UniqueId ec_id);
 
-  bool goPos(const double& x, const double& y, const double& th);
-  bool goVelocity(const double& vx, const double& vy, const double& vth);
-  bool goStop();
-  bool jumpTo(const double& x, const double& y, const double& z, const double& ts, const double& tf);
   bool setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs);
-  bool setFootStepsWithParam(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs, const actkin_stabilizer::ActKinStabilizerService::StepParamSequence& sps);
-  void waitFootSteps();
   bool startAutoBalancer();
   bool stopAutoBalancer();
   bool setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
   bool getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
-  bool getFootStepState(actkin_stabilizer::ActKinStabilizerService::FootStepState& i_param);
-  bool releaseEmergencyStop();
   bool startStabilizer(void);
   bool stopStabilizer(void);
-  bool startImpedanceController(const std::string& i_name);
-  bool stopImpedanceController(const std::string& i_name);
-  bool startWholeBodyMasterSlave();
-  bool stopWholeBodyMasterSlave();
 
 protected:
   std::mutex mutex_;
 
   unsigned int debugLevel_;
   unsigned long long loop_;
-  double dt_;
 
   class Ports {
   public:
@@ -84,90 +71,32 @@ protected:
     RTC::InPort<RTC::TimedDoubleSeq> m_qRefIn_;
     RTC::TimedDoubleSeq m_refTau_;
     RTC::InPort<RTC::TimedDoubleSeq> m_refTauIn_;
-    RTC::TimedPoint3D m_refBasePos_; // Reference World frame
-    RTC::InPort<RTC::TimedPoint3D> m_refBasePosIn_;
-    RTC::TimedOrientation3D m_refBaseRpy_; // Reference World frame
-    RTC::InPort<RTC::TimedOrientation3D> m_refBaseRpyIn_;
-    std::vector<RTC::TimedDoubleSeq> m_refEEWrench_; // Reference FootOrigin frame. EndEffector origin. 要素数及び順番はgaitParam_.eeNameと同じ. ロボットが受ける力
-    std::vector<std::unique_ptr<RTC::InPort<RTC::TimedDoubleSeq> > > m_refEEWrenchIn_;
     RTC::TimedDoubleSeq m_qAct_;
     RTC::InPort<RTC::TimedDoubleSeq> m_qActIn_;
     RTC::TimedDoubleSeq m_dqAct_;
     RTC::InPort<RTC::TimedDoubleSeq> m_dqActIn_;
     RTC::TimedOrientation3D m_actImu_; // Actual Imu World Frame. robotのgyrometerという名のRateGyroSensorの傾きを表す
     RTC::InPort<RTC::TimedOrientation3D> m_actImuIn_;
-    std::vector<RTC::TimedDoubleSeq> m_actWrench_; // Actual ForceSensor frame. ForceSensor origin. 要素数及び順番はrobot->forceSensorsと同じ. ロボットが受ける力
-    std::vector<std::unique_ptr<RTC::InPort<RTC::TimedDoubleSeq> > > m_actWrenchIn_;
-    std::vector<RTC::TimedPose3D> m_refEEPose_; // Reference World frame. 要素数及び順番はgaitParam_.eeNameと同じ
-    std::vector<std::unique_ptr<RTC::InPort<RTC::TimedPose3D> > > m_refEEPoseIn_;
-    RTC::Time refEEPoseLastUpdateTime_; // m_refEEPoseIn_のどれかに最後にdataが届いたときの、m_qRef_.tmの時刻
     collision_checker_msgs::TimedCollisionSeq m_selfCollision_; // generate frame. genRobotの自己干渉の最近傍点
     RTC::InPort<collision_checker_msgs::TimedCollisionSeq> m_selfCollisionIn_;
-    auto_stabilizer_msgs::TimedSteppableRegion m_steppableRegion_; // 着地可能領域. 支持脚を水平にした座標系
-    RTC::InPort<auto_stabilizer_msgs::TimedSteppableRegion> m_steppableRegionIn_;
-    RTC::Time steppableRegionLastUpdateTime_; // m_steppableRegionIn_に最後にdataが届いたときの、m_qRef_.tmの時刻
-    auto_stabilizer_msgs::TimedLandingPosition m_landingHeight_; // 着地姿勢. 支持脚を水平にした座標系
-    RTC::InPort<auto_stabilizer_msgs::TimedLandingPosition> m_landingHeightIn_;
 
-    RTC::TimedDoubleSeq m_q_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_qOut_;
     RTC::TimedDoubleSeq m_genTau_;
     RTC::OutPort<RTC::TimedDoubleSeq> m_genTauOut_;
-    RTC::TimedPose3D m_genBasePose_; // Generate World frame
-    RTC::OutPort<RTC::TimedPose3D> m_genBasePoseOut_;
-    RTC::TimedDoubleSeq m_genBaseTform_;  // Generate World frame
-    RTC::OutPort<RTC::TimedDoubleSeq> m_genBaseTformOut_; // for HrpsysSeqStateROSBridge
-    RTC::TimedAcceleration3D m_genImuAcc_; // acceleration of IMU sensor in generate world frame. represented in sensor frame. これがあったほうが姿勢推定の性能が上がる.
-    RTC::OutPort<RTC::TimedAcceleration3D> m_genImuAccOut_;
-    auto_stabilizer_msgs::TimedLandingPosition m_landingTarget_; // 着地位置. 支持脚を水平にした座標系
-    RTC::OutPort<auto_stabilizer_msgs::TimedLandingPosition> m_landingTargetOut_;
-    std::vector<RTC::TimedPose3D> m_actEEPose_; // Generate World frame. 要素数及び順番はgaitParam_.eeNameと同じ
-    std::vector<std::unique_ptr<RTC::OutPort<RTC::TimedPose3D> > > m_actEEPoseOut_;
-    std::vector<RTC::TimedDoubleSeq> m_actEEWrench_; // Generate World frame. EndEffector origin. 要素数及び順番はgaitParam_.eeNameと同じ. ロボットが受ける力
-    std::vector<std::unique_ptr<RTC::OutPort<RTC::TimedDoubleSeq> > > m_actEEWrenchOut_;
+    RTC::TimedPose3D m_actBasePose_; // Generate World frame
+    RTC::OutPort<RTC::TimedPose3D> m_actBasePoseOut_;
+    RTC::TimedDoubleSeq m_actBaseTform_;  // Generate World frame
+    RTC::OutPort<RTC::TimedDoubleSeq> m_actBaseTformOut_; // for HrpsysSeqStateROSBridge
 
     ActKinStabilizerService_impl m_service0_;
     RTC::CorbaPort m_ActKinStabilizerServicePort_;
 
-    RTC::CorbaConsumer<OpenHRP::RobotHardwareService> m_robotHardwareService0_;
-    RTC::CorbaPort m_RobotHardwareServicePort_;
-
-
     // only for log
-    RTC::TimedPoint3D m_genBasePos_; // Generate World frame
-    RTC::OutPort<RTC::TimedPoint3D> m_genBasePosOut_; // for log
-    RTC::TimedOrientation3D m_genBaseRpy_; // Generate World frame
-    RTC::OutPort<RTC::TimedOrientation3D> m_genBaseRpyOut_; // for log
-    RTC::TimedPoint3D m_genCog_; // Generate World frame
-    RTC::OutPort<RTC::TimedPoint3D> m_genCogOut_; // for log
-    RTC::TimedPoint3D m_genZmp_; // Generate World frame
-    RTC::OutPort<RTC::TimedPoint3D> m_genZmpOut_; // for log
-    RTC::TimedPoint3D m_genDcm_; // Generate World frame
-    RTC::OutPort<RTC::TimedPoint3D> m_genDcmOut_; // for log
-    RTC::TimedPoint3D m_tgtZmp_; // Generate World frame
-    RTC::OutPort<RTC::TimedPoint3D> m_tgtZmpOut_; // for log
+    RTC::TimedPoint3D m_actBasePos_; // Generate World frame
+    RTC::OutPort<RTC::TimedPoint3D> m_actBasePosOut_; // for log
+    RTC::TimedOrientation3D m_actBaseRpy_; // Generate World frame
+    RTC::OutPort<RTC::TimedOrientation3D> m_actBaseRpyOut_; // for log
     RTC::TimedPoint3D m_actCog_; // Generate World frame
     RTC::OutPort<RTC::TimedPoint3D> m_actCogOut_; // for log
-    RTC::TimedPoint3D m_actDcm_; // Generate World frame
-    RTC::OutPort<RTC::TimedPoint3D> m_actDcmOut_; // for log
-    RTC::TimedDoubleSeq m_dstLandingPos_; // Generate World frame
-    RTC::OutPort<RTC::TimedDoubleSeq> m_dstLandingPosOut_; // for log
-    RTC::TimedDoubleSeq m_remainTime_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_remainTimeOut_; // for log
-    RTC::TimedDoubleSeq m_genCoords_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_genCoordsOut_; // for log
-    RTC::TimedDoubleSeq m_captureRegion_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_captureRegionOut_; // for log
-    RTC::TimedDoubleSeq m_steppableRegionLog_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_steppableRegionLogOut_; // for log
-    RTC::TimedDoubleSeq m_steppableRegionNumLog_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_steppableRegionNumLogOut_; // for log
-    RTC::TimedDoubleSeq m_strideLimitationHull_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_strideLimitationHullOut_; // for log
-    RTC::TimedDoubleSeq m_cpViewerLog_;
-    RTC::OutPort<RTC::TimedDoubleSeq> m_cpViewerLogOut_; // for log
-    std::vector<RTC::TimedDoubleSeq> m_tgtEEWrench_; // Generate World frame. EndEffector origin. 要素数及び順番はgaitParam_.eeNameと同じ. ロボットが受ける力
-    std::vector<std::unique_ptr<RTC::OutPort<RTC::TimedDoubleSeq> > > m_tgtEEWrenchOut_;
   };
   Ports ports_;
 
@@ -189,9 +118,9 @@ protected:
       MODE_ABC: 位置制御. 出力する指令関節角度は変化しない
       MODE_ST: トルク制御. 出力する指令関節角度はactualの値で更新する.
      */
-    enum Mode_enum{ MODE_IDLE, MODE_SYNC_TO_ABC, MODE_ABC, MODE_SYNC_TO_ST, MODE_ST, MODE_SYNC_TO_EMG, MODE_EMG, MODE_SYNC_TO_RELEASE_EMG, MODE_SYNC_TO_IDLE};
-    enum Transition_enum{ START_ABC, STOP_ABC, START_ST, STOP_ST, RELEASE_EMG};
-    double abc_start_transition_time, abc_stop_transition_time, st_start_transition_time, st_stop_transition_time, release_emergency_transition_time;
+    enum Mode_enum{ MODE_IDLE, MODE_SYNC_TO_ST, MODE_ST, MODE_SYNC_TO_IDLE};
+    enum Transition_enum{ START_ST, STOP_ST};
+    double st_start_transition_time, st_stop_transition_time;
   private:
     Mode_enum current, previous, next;
     cpp_filters::TwoPointInterpolator<double> transitionInterpolator = cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::LINEAR); // 0 -> 1
@@ -273,8 +202,6 @@ protected:
     bool isSTRunning() const{ return (current==MODE_SYNC_TO_ST) || (current==MODE_ST) ;}
   };
   ControlMode mode_;
-  cpp_filters::TwoPointInterpolatorSE3 outputRootPoseFilter_ = cpp_filters::TwoPointInterpolatorSE3(cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB);
-  std::vector<cpp_filters::TwoPointInterpolator<double> > outputJointAngleFilter_;
 
   GaitParam gaitParam_;
 
@@ -291,7 +218,6 @@ protected:
 protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
-  static void copyEigenCoords2FootStep(const cnoid::Position& in_fs, actkin_stabilizer::ActKinStabilizerService::Footstep& out_fs);
 
   static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal);
   static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator);

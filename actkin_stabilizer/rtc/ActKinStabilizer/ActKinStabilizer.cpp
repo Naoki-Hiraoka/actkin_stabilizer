@@ -25,42 +25,20 @@ static const char* ActKinStabilizer_spec[] = {
 ActKinStabilizer::Ports::Ports() :
   m_qRefIn_("qRef", m_qRef_),
   m_refTauIn_("refTauIn", m_refTau_),
-  m_refBasePosIn_("refBasePosIn", m_refBasePos_),
-  m_refBaseRpyIn_("refBaseRpyIn", m_refBaseRpy_),
   m_qActIn_("qAct", m_qAct_),
   m_dqActIn_("dqAct", m_dqAct_),
   m_actImuIn_("actImuIn", m_actImu_),
   m_selfCollisionIn_("selfCollisionIn", m_selfCollision_),
-  m_steppableRegionIn_("steppableRegionIn", m_steppableRegion_),
-  m_landingHeightIn_("landingHeightIn", m_landingHeight_),
 
-  m_qOut_("q", m_q_),
   m_genTauOut_("genTauOut", m_genTau_),
-  m_genBasePoseOut_("genBasePoseOut", m_genBasePose_),
-  m_genBaseTformOut_("genBaseTformOut", m_genBaseTform_),
-  m_genImuAccOut_("genImuAccOut", m_genImuAcc_),
-  m_landingTargetOut_("landingTargetOut", m_landingTarget_),
+  m_actBasePoseOut_("actBasePoseOut", m_actBasePose_),
+  m_actBaseTformOut_("actBaseTformOut", m_actBaseTform_),
 
-  m_genBasePosOut_("genBasePosOut", m_genBasePos_),
-  m_genBaseRpyOut_("genBaseRpyOut", m_genBaseRpy_),
-  m_genCogOut_("genCogOut", m_genCog_),
-  m_genDcmOut_("genDcmOut", m_genDcm_),
-  m_genZmpOut_("genZmpOut", m_genZmp_),
-  m_tgtZmpOut_("tgtZmpOut", m_tgtZmp_),
+  m_actBasePosOut_("actBasePosOut", m_actBasePos_),
+  m_actBaseRpyOut_("actBaseRpyOut", m_actBaseRpy_),
   m_actCogOut_("actCogOut", m_actCog_),
-  m_actDcmOut_("actDcmOut", m_actDcm_),
-  m_dstLandingPosOut_("dstLandingPosOut", m_dstLandingPos_),
-  m_remainTimeOut_("remainTimeOut", m_remainTime_),
-  m_genCoordsOut_("genCoordsOut", m_genCoords_),
-  m_captureRegionOut_("captureRegionOut", m_captureRegion_),
-  m_steppableRegionLogOut_("steppableRegionLogOut", m_steppableRegionLog_),
-  m_steppableRegionNumLogOut_("steppableRegionNumLogOut", m_steppableRegionNumLog_),
-  m_strideLimitationHullOut_("strideLimitationHullOut", m_strideLimitationHull_),
-  m_cpViewerLogOut_("cpViewerLogOut", m_cpViewerLog_),
 
-  m_ActKinStabilizerServicePort_("ActKinStabilizerService"),
-
-  m_RobotHardwareServicePort_("RobotHardwareService"){
+  m_ActKinStabilizerServicePort_("ActKinStabilizerService"){
 }
 
 ActKinStabilizer::ActKinStabilizer(RTC::Manager* manager) : RTC::DataFlowComponentBase(manager),
@@ -75,55 +53,18 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   // add ports
   this->addInPort("qRef", this->ports_.m_qRefIn_);
   this->addInPort("refTauIn", this->ports_.m_refTauIn_);
-  this->addInPort("refBasePosIn", this->ports_.m_refBasePosIn_);
-  this->addInPort("refBaseRpyIn", this->ports_.m_refBaseRpyIn_);
   this->addInPort("qAct", this->ports_.m_qActIn_);
   this->addInPort("dqAct", this->ports_.m_dqActIn_);
   this->addInPort("actImuIn", this->ports_.m_actImuIn_);
   this->addInPort("selfCollisionIn", this->ports_.m_selfCollisionIn_);
-  this->addInPort("steppableRegionIn", this->ports_.m_steppableRegionIn_);
-  this->addInPort("landingHeightIn", this->ports_.m_landingHeightIn_);
-  this->addOutPort("q", this->ports_.m_qOut_);
   this->addOutPort("genTauOut", this->ports_.m_genTauOut_);
-  this->addOutPort("genBasePoseOut", this->ports_.m_genBasePoseOut_);
-  this->addOutPort("genBaseTformOut", this->ports_.m_genBaseTformOut_);
-  this->addOutPort("genImuAccOut", this->ports_.m_genImuAccOut_);
-  this->addOutPort("landingTargetOut", this->ports_.m_landingTargetOut_);
-  this->addOutPort("genBasePosOut", this->ports_.m_genBasePosOut_);
-  this->addOutPort("genBaseRpyOut", this->ports_.m_genBaseRpyOut_);
-  this->addOutPort("genCogOut", this->ports_.m_genCogOut_);
-  this->addOutPort("genDcmOut", this->ports_.m_genDcmOut_);
-  this->addOutPort("genZmpOut", this->ports_.m_genZmpOut_);
-  this->addOutPort("tgtZmpOut", this->ports_.m_tgtZmpOut_);
+  this->addOutPort("actBasePoseOut", this->ports_.m_actBasePoseOut_);
+  this->addOutPort("actBaseTformOut", this->ports_.m_actBaseTformOut_);
+  this->addOutPort("actBasePosOut", this->ports_.m_actBasePosOut_);
+  this->addOutPort("actBaseRpyOut", this->ports_.m_actBaseRpyOut_);
   this->addOutPort("actCogOut", this->ports_.m_actCogOut_);
-  this->addOutPort("actDcmOut", this->ports_.m_actDcmOut_);
-  this->addOutPort("dstLandingPosOut", this->ports_.m_dstLandingPosOut_);
-  this->addOutPort("remainTimeOut", this->ports_.m_remainTimeOut_);
-  this->addOutPort("genCoordsOut", this->ports_.m_genCoordsOut_);
-  this->addOutPort("captureRegionOut", this->ports_.m_captureRegionOut_);
-  this->addOutPort("steppableRegionLogOut", this->ports_.m_steppableRegionLogOut_);
-  this->addOutPort("steppableRegionNumLogOut", this->ports_.m_steppableRegionNumLogOut_);
-  this->addOutPort("strideLimitationHullOut", this->ports_.m_strideLimitationHullOut_);
-  this->addOutPort("cpViewerLogOut", this->ports_.m_cpViewerLogOut_);
   this->ports_.m_ActKinStabilizerServicePort_.registerProvider("service0", "ActKinStabilizerService", this->ports_.m_service0_);
   this->addPort(this->ports_.m_ActKinStabilizerServicePort_);
-  this->ports_.m_RobotHardwareServicePort_.registerConsumer("service0", "RobotHardwareService", this->ports_.m_robotHardwareService0_);
-  this->addPort(this->ports_.m_RobotHardwareServicePort_);
-  {
-    // load dt
-    std::string buf; this->getProperty("dt", buf);
-    this->dt_ = std::stod(buf);
-    if(this->dt_ <= 0.0){
-      this->getProperty("exec_cxt.periodic.rate", buf);
-      double rate = std::stod(buf);
-      if(rate > 0.0){
-        this->dt_ = 1.0/rate;
-      }else{
-        std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << "dt is invalid" << "\x1b[39m" << std::endl;
-        return RTC::RTC_ERROR;
-      }
-    }
-  }
 
   {
     // load robot model
@@ -150,7 +91,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     }
     std::string jointLimitTableStr; this->getProperty("joint_limit_table",jointLimitTableStr);
     {
-      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.genRobot, jointLimitTableStr);
+      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.actRobot, jointLimitTableStr);
       for(size_t i=0;i<jointLimitTables.size();i++){
         // apply margin
         for(size_t j=0;j<jointLimitTables[i]->lLimitTable().size();j++){
@@ -162,23 +103,10 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         this->gaitParam_.jointLimitTables[jointLimitTables[i]->getSelfJoint()->jointId()].push_back(jointLimitTables[i]);
       }
     }
-    {
-      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTablesTqc = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.actRobotTqc, jointLimitTableStr);
-      for(size_t i=0;i<jointLimitTablesTqc.size();i++){
-        // apply margin
-        for(size_t j=0;j<jointLimitTablesTqc[i]->lLimitTable().size();j++){
-          if(jointLimitTablesTqc[i]->uLimitTable()[j] - jointLimitTablesTqc[i]->lLimitTable()[j] > 0.002){
-            jointLimitTablesTqc[i]->uLimitTable()[j] -= 0.001;
-            jointLimitTablesTqc[i]->lLimitTable()[j] += 0.001;
-          }
-        }
-        this->gaitParam_.jointLimitTablesTqc[jointLimitTablesTqc[i]->getSelfJoint()->jointId()].push_back(jointLimitTablesTqc[i]);
-      }
-    }
 
     // apply margin to jointlimit
-    for(int i=0;i<this->gaitParam_.genRobot->numJoints();i++){
-      cnoid::LinkPtr joint = this->gaitParam_.genRobot->joint(i);
+    for(int i=0;i<this->gaitParam_.actRobot->numJoints();i++){
+      cnoid::LinkPtr joint = this->gaitParam_.actRobot->joint(i);
       if(joint->q_upper() - joint->q_lower() > 0.002){
         joint->setJointRange(joint->q_lower()+0.001,joint->q_upper()-0.001);
       }
@@ -190,160 +118,11 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   }
 
 
-  {
-    // load end_effector
-    std::string endEffectors; this->getProperty("end_effectors", endEffectors);
-    std::stringstream ss_endEffectors(endEffectors);
-    std::string buf;
-    while(std::getline(ss_endEffectors, buf, ',')){
-      std::string name;
-      std::string parentLink;
-      cnoid::Vector3 localp;
-      cnoid::Vector3 localaxis;
-      double localangle;
-
-      //   name, parentLink, (not used), x, y, z, theta, ax, ay, az
-      name = buf;
-      if(!std::getline(ss_endEffectors, buf, ',')) break; parentLink = buf;
-      if(!std::getline(ss_endEffectors, buf, ',')) break; // not used
-      if(!std::getline(ss_endEffectors, buf, ',')) break; localp[0] = std::stod(buf);
-      if(!std::getline(ss_endEffectors, buf, ',')) break; localp[1] = std::stod(buf);
-      if(!std::getline(ss_endEffectors, buf, ',')) break; localp[2] = std::stod(buf);
-      if(!std::getline(ss_endEffectors, buf, ',')) break; localaxis[0] = std::stod(buf);
-      if(!std::getline(ss_endEffectors, buf, ',')) break; localaxis[1] = std::stod(buf);
-      if(!std::getline(ss_endEffectors, buf, ',')) break; localaxis[2] = std::stod(buf);
-      if(!std::getline(ss_endEffectors, buf, ',')) break; localangle = std::stod(buf);
-
-      // check validity
-      name.erase(std::remove(name.begin(), name.end(), ' '), name.end()); // remove whitespace
-      parentLink.erase(std::remove(parentLink.begin(), parentLink.end(), ' '), parentLink.end()); // remove whitespace
-      if(!this->gaitParam_.refRobotRaw->link(parentLink)){
-        std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << " link [" << parentLink << "]" << " is not found for " << name << "\x1b[39m" << std::endl;
-        return RTC::RTC_ERROR;
-      }
-      cnoid::Matrix3 localR;
-      if(localaxis.norm() == 0) localR = cnoid::Matrix3::Identity();
-      else localR = Eigen::AngleAxisd(localangle, localaxis.normalized()).toRotationMatrix();
-      cnoid::Position localT;
-      localT.translation() = localp;
-      localT.linear() = localR;
-
-      this->gaitParam_.push_backEE(name, parentLink, localT);
-    }
-
-    // 0番目が右脚. 1番目が左脚. という仮定がある.
-    if(this->gaitParam_.endEffectors.size() < NUM_LEGS || this->gaitParam_.endEffectors[RLEG].name != "rleg" || this->gaitParam_.endEffectors[LLEG].name != "lleg"){
-      std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << " this->gaitParam_.endEffectors.size() < 2 || this->gaitParams.endEffectors[0].name != \"rleg\" || this->gaitParam_.endEffectors[1].name != \"lleg\" not holds" << "\x1b[39m" << std::endl;
-      return RTC::RTC_ERROR;
-    }
-  }
-
-  {
-    // generate LegParams
-    // init-poseのとき両脚が同一平面上で, Y軸方向に横に並んでいるという仮定がある
-    cnoid::Position defautFootMidCoords = mathutil::calcMidCoords(std::vector<cnoid::Position>{cnoid::Position(this->gaitParam_.refRobot->link(this->gaitParam_.endEffectors[RLEG].parentLink)->T()*this->gaitParam_.endEffectors[RLEG].localT),cnoid::Position(this->gaitParam_.refRobot->link(this->gaitParam_.endEffectors[LLEG].parentLink)->T()*this->gaitParam_.endEffectors[LLEG].localT)},
-                                                            std::vector<double>{1,1});
-    for(int i=0; i<NUM_LEGS; i++){
-      cnoid::Position defaultPose = this->gaitParam_.refRobot->link(this->gaitParam_.endEffectors[i].parentLink)->T()*this->gaitParam_.endEffectors[i].localT;
-      cnoid::Vector3 defaultTranslatePos = defautFootMidCoords.inverse() * defaultPose.translation();
-      defaultTranslatePos[0] = 0.0;
-      defaultTranslatePos[2] = 0.0;
-      this->gaitParam_.defaultTranslatePos[i].reset(defaultTranslatePos);
-    }
-  }
-
-  {
-    // add more ports (ロボットモデルやEndEffectorの情報を使って)
-
-    // 各EndEffectorにつき、ref<name>WrenchInというInPortをつくる
-    this->ports_.m_refEEWrenchIn_.resize(this->gaitParam_.endEffectors.size());
-    this->ports_.m_refEEWrench_.resize(this->gaitParam_.endEffectors.size());
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      std::string name = "ref"+this->gaitParam_.endEffectors[i].name+"WrenchIn";
-      this->ports_.m_refEEWrenchIn_[i] = std::make_unique<RTC::InPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_refEEWrench_[i]);
-      this->addInPort(name.c_str(), *(this->ports_.m_refEEWrenchIn_[i]));
-    }
-
-    // 各ForceSensorにつき、act<name>InというInportをつくる
-    cnoid::DeviceList<cnoid::ForceSensor> forceSensors(this->gaitParam_.actRobotRaw->devices());
-    this->ports_.m_actWrenchIn_.resize(forceSensors.size());
-    this->ports_.m_actWrench_.resize(forceSensors.size());
-    for(int i=0;i<forceSensors.size();i++){
-      std::string name = "act"+forceSensors[i]->name()+"In";
-      this->ports_.m_actWrenchIn_[i] = std::make_unique<RTC::InPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_actWrench_[i]);
-      this->addInPort(name.c_str(), *(this->ports_.m_actWrenchIn_[i]));
-    }
-
-    // 各EndEffectorにつき、ref<name>PoseInというInPortをつくる
-    this->ports_.m_refEEPoseIn_.resize(this->gaitParam_.endEffectors.size());
-    this->ports_.m_refEEPose_.resize(this->gaitParam_.endEffectors.size());
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      std::string name = "ref"+this->gaitParam_.endEffectors[i].name+"PoseIn";
-      this->ports_.m_refEEPoseIn_[i] = std::make_unique<RTC::InPort<RTC::TimedPose3D> >(name.c_str(), this->ports_.m_refEEPose_[i]);
-      this->addInPort(name.c_str(), *(this->ports_.m_refEEPoseIn_[i]));
-    }
-
-    // 各EndEffectorにつき、act<name>PoseOutというOutPortをつくる
-    this->ports_.m_actEEPoseOut_.resize(this->gaitParam_.endEffectors.size());
-    this->ports_.m_actEEPose_.resize(this->gaitParam_.endEffectors.size());
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      std::string name = "act"+this->gaitParam_.endEffectors[i].name+"PoseOut";
-      this->ports_.m_actEEPoseOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedPose3D> >(name.c_str(), this->ports_.m_actEEPose_[i]);
-      this->addOutPort(name.c_str(), *(this->ports_.m_actEEPoseOut_[i]));
-    }
-
-    // 各EndEffectorにつき、tgt<name>WrenchOutというOutPortをつくる
-    this->ports_.m_tgtEEWrenchOut_.resize(this->gaitParam_.endEffectors.size());
-    this->ports_.m_tgtEEWrench_.resize(this->gaitParam_.endEffectors.size());
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      std::string name = "tgt"+this->gaitParam_.endEffectors[i].name+"WrenchOut";
-      this->ports_.m_tgtEEWrenchOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_tgtEEWrench_[i]);
-      this->addOutPort(name.c_str(), *(this->ports_.m_tgtEEWrenchOut_[i]));
-    }
-
-    // 各EndEffectorにつき、act<name>WrenchOutというOutPortをつくる
-    this->ports_.m_actEEWrenchOut_.resize(this->gaitParam_.endEffectors.size());
-    this->ports_.m_actEEWrench_.resize(this->gaitParam_.endEffectors.size());
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      std::string name = "act"+this->gaitParam_.endEffectors[i].name+"WrenchOut";
-      this->ports_.m_actEEWrenchOut_[i] = std::make_unique<RTC::OutPort<RTC::TimedDoubleSeq> >(name.c_str(), this->ports_.m_actEEWrench_[i]);
-      this->addOutPort(name.c_str(), *(this->ports_.m_actEEWrenchOut_[i]));
-    }
-
-  }
-
-  {
-    // init ActToGenFrameConverter
-    this->actToGenFrameConverter_.eeForceSensor.resize(this->gaitParam_.endEffectors.size());
-    cnoid::DeviceList<cnoid::ForceSensor> forceSensors(this->gaitParam_.refRobotRaw->devices());
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      // 各EndEffectorsから親リンク側に遡っていき、最初に見つかったForceSensorをEndEffectorに対応付ける. 以後、ForceSensorの値を座標変換したものがEndEffectorが受けている力とみなされる. 見つからなければ受けている力は常に0とみなされる
-      std::string forceSensor = "";
-      cnoid::LinkPtr link = this->gaitParam_.refRobotRaw->link(this->gaitParam_.endEffectors[i].parentLink);
-      bool found = false;
-      while (link != nullptr && found == false) {
-        for (size_t j = 0; j < forceSensors.size(); j++) {
-          if(forceSensors[j]->link() == link) {
-            forceSensor = forceSensors[j]->name();
-            found = true;
-            break;
-          }
-        }
-      }
-      this->actToGenFrameConverter_.eeForceSensor[i] = forceSensor;
-    }
-  }
-
-  // init ImpedanceController
-  for(int i=0;i<this->gaitParam_.endEffectors.size();i++) this->impedanceController_.push_backEE();
-
   // init Stabilizer
-  this->stabilizer_.init(this->gaitParam_, this->gaitParam_.actRobotTqc, this->gaitParam_.genRobot);
+  this->stabilizer_.init(this->gaitParam_, this->gaitParam_.actRobotTqc, this->gaitParam_.actRobot);
 
   // initialize parameters
   this->loop_ = 0;
-
-  this->outputJointAngleFilter_.resize(this->gaitParam_.refRobotRaw->numJoints(), cpp_filters::TwoPointInterpolator<double>(0.0, 0.0, 0.0, cpp_filters::HOFFARBIB));
 
   return RTC::RTC_OK;
 }
@@ -944,8 +723,14 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
 RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   std::lock_guard<std::mutex> guard(this->mutex_);
 
-  std::string instance_name = std::string(this->m_profile.instance_name);
   this->loop_++;
+  std::string instance_name = std::string(this->m_profile.instance_name);
+  double rate = this->get_context(ec_id)->get_rate();
+  if(rate <= 0.0){
+    std::cerr << "\x1b[31m[" << instance_name << "] " << " periodic rate is invalid " << rate << "\x1b[39m" << std::endl;
+    return RTC::RTC_ERROR;
+  }
+  double dt = 1.0 / rate;
 
   if(!ActKinStabilizer::readInPortData(this->dt_, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.selfCollision, this->gaitParam_.steppableRegion, this->gaitParam_.steppableHeight, this->gaitParam_.relLandingHeight, this->gaitParam_.relLandingNormal)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
 
@@ -987,54 +772,6 @@ RTC::ReturnCode_t ActKinStabilizer::onDeactivated(RTC::UniqueId ec_id){
 }
 RTC::ReturnCode_t ActKinStabilizer::onFinalize(){ return RTC::RTC_OK; }
 
-bool ActKinStabilizer::goPos(const double& x, const double& y, const double& th){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning()){
-    if(std::isfinite(x) && std::isfinite(y) && std::isfinite(th)){
-      return this->footStepGenerator_.goPos(this->gaitParam_, x, y, th,
-                                            this->gaitParam_.footstepNodesList);
-    }else{
-      std::cerr << "goPos is not finite!" << std::endl;
-      return false;
-    }
-  }else{
-    return false;
-  }
-}
-bool ActKinStabilizer::goVelocity(const double& vx, const double& vy, const double& vth){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning()){
-    if(std::isfinite(vx) && std::isfinite(vy) && std::isfinite(vth)){
-      this->cmdVelGenerator_.refCmdVel[0] = vx;
-      this->cmdVelGenerator_.refCmdVel[1] = vy;
-      this->cmdVelGenerator_.refCmdVel[2] = vth / 180.0 * M_PI;
-      this->footStepGenerator_.isGoVelocityMode = true;
-      return true;
-    }else{
-      std::cerr << "goVelocity is not finite!" << std::endl;
-      return false;
-    }
-  }else{
-    return false;
-  }
-}
-bool ActKinStabilizer::goStop(){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning() && this->footStepGenerator_.isGoVelocityMode){ // this->footStepGenerator_.isGoVelocityMode時のみ行う. goStopが呼ばれて、staticになる前にgoStopが再度呼ばれることが繰り返されると、止まらないので
-    this->cmdVelGenerator_.refCmdVel.setZero();
-    this->footStepGenerator_.isGoVelocityMode = false;
-    this->footStepGenerator_.goStop(this->gaitParam_,
-                                    this->gaitParam_.footstepNodesList);
-    return true;
-  }else{
-    return false;
-  }
-}
-bool ActKinStabilizer::jumpTo(const double& x, const double& y, const double& z, const double& ts, const double& tf){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  return true;
-}
-
 bool ActKinStabilizer::setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs){
   actkin_stabilizer::ActKinStabilizerService::StepParamSequence sps;
   sps.length(fs.length());
@@ -1044,52 +781,6 @@ bool ActKinStabilizer::setFootSteps(const actkin_stabilizer::ActKinStabilizerSer
     sps[i].swing_end = false;
   }
   return this->setFootStepsWithParam(fs, sps); // この中でmutexをとるので、setFootSteps関数ではmutexはとらない
-}
-
-bool ActKinStabilizer::setFootStepsWithParam(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs, const actkin_stabilizer::ActKinStabilizerService::StepParamSequence& sps){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning()){
-    std::vector<FootStepGenerator::StepNode> footsteps;
-    if(fs.length() != sps.length()){
-      std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] fs.length() != sps.length()" << "\x1b[39m" << std::endl;
-      return false;
-    }
-    for(int i=0;i<fs.length();i++){
-      FootStepGenerator::StepNode stepNode;
-      if(std::string(fs[i].leg) == "rleg") stepNode.l_r = RLEG;
-      else if(std::string(fs[i].leg) == "lleg") stepNode.l_r = LLEG;
-      else {
-        std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] leg name [" << fs[i].leg << "] is invalid" << "\x1b[39m" << std::endl;
-        return false;
-      }
-      if(!std::isfinite(fs[i].pos[0]) || !std::isfinite(fs[i].pos[1]) || !std::isfinite(fs[i].pos[2]) ||
-         !std::isfinite(fs[i].rot[0]) || !std::isfinite(fs[i].rot[1]) || !std::isfinite(fs[i].rot[2]) || !std::isfinite(fs[i].rot[3]) ||
-         !std::isfinite(sps[i].step_height) || !std::isfinite(sps[i].step_time)){
-        std::cerr << "setFootStepsWithParam is not finite!" << std::endl;
-        return false;
-      }
-      stepNode.coords.translation() = cnoid::Vector3(fs[i].pos[0],fs[i].pos[1],fs[i].pos[2]);
-      stepNode.coords.linear() = Eigen::Quaterniond(fs[i].rot[0],fs[i].rot[1],fs[i].rot[2],fs[i].rot[3]).toRotationMatrix();
-      stepNode.stepHeight = sps[i].step_height;
-      stepNode.stepTime = sps[i].step_time;
-      stepNode.swingEnd = sps[i].swing_end;
-      footsteps.push_back(stepNode);
-    }
-    return this->footStepGenerator_.setFootSteps(this->gaitParam_, footsteps, // input
-                                                 this->gaitParam_.footstepNodesList); // output
-  }else{
-    return false;
-  }
-}
-void ActKinStabilizer::waitFootSteps(){
-  while (this->mode_.isABCRunning() && !this->gaitParam_.isStatic()) usleep(1000);
-  usleep(1000);
-  return;
-}
-
-bool ActKinStabilizer::releaseEmergencyStop(){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  return true;
 }
 
 
@@ -1138,616 +829,16 @@ bool ActKinStabilizer::stopStabilizer(void){
   }
 }
 
-bool ActKinStabilizer::startImpedanceController(const std::string& i_name){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning()){
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      if(this->gaitParam_.endEffectors[i].name != i_name) continue;
-      if(this->impedanceController_.isImpedanceMode[i]) {
-        std::cerr << "[" << this->m_profile.instance_name << "] Impedance control [" << i_name << "] is already started" << std::endl;
-        return false;
-      }
-      std::cerr << "[" << this->m_profile.instance_name << "] Start impedance control [" << i_name << "]" << std::endl;
-      this->impedanceController_.isImpedanceMode[i] = true;
-      return true;
-    }
-    std::cerr << "[" << this->m_profile.instance_name << "] Could not found impedance controller param [" << i_name << "]" << std::endl;
-    return false;
-  }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start ActKinBalancer" << std::endl;
-    return false;
-  }
-}
-
-bool ActKinStabilizer::stopImpedanceController(const std::string& i_name){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning()){
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      if(this->gaitParam_.endEffectors[i].name != i_name) continue;
-      if(!this->impedanceController_.isImpedanceMode[i]) {
-        std::cerr << "[" << this->m_profile.instance_name << "] Impedance control [" << i_name << "] is already stopped" << std::endl;
-        return false;
-      }
-      std::cerr << "[" << this->m_profile.instance_name << "] Stop impedance control [" << i_name << "]" << std::endl;
-      this->impedanceController_.isImpedanceMode[i] = false;
-      this->gaitParam_.icEEOffset[i].setGoal(cnoid::Vector6::Zero(), 2.0);
-      return true;
-    }
-    std::cerr << "[" << this->m_profile.instance_name << "] Could not found impedance controller param [" << i_name << "]" << std::endl;
-    return false;
-  }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
-    return false;
-  }
-}
-bool ActKinStabilizer::startWholeBodyMasterSlave(void){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning()){
-    if(this->refToGenFrameConverter_.solveFKMode.getGoal() == 0.0){
-      std::cerr << "[" << this->m_profile.instance_name << "] WholeBodyMasterSlave is already started" << std::endl;
-      return false;
-    }
-    if(std::abs(((long long)this->ports_.refEEPoseLastUpdateTime_.sec - (long long)this->ports_.m_qRef_.tm.sec) + 1e-9 * ((long long)this->ports_.refEEPoseLastUpdateTime_.nsec - (long long)this->ports_.m_qRef_.tm.nsec)) > 1.0) { // 最新のm_refEEPose_が1秒以上前. master sideが立ち上がっていないので、姿勢の急変を引き起こし危険. RTC::Timeはunsigned long型なので、符号付きの型に変換してから引き算
-      std::cerr << "[" << this->m_profile.instance_name << "] Please start master side" << std::endl;
-      return false;
-    }
-    this->refToGenFrameConverter_.solveFKMode.setGoal(0.0, 5.0); // 5秒で遷移
-    std::cerr << "[" << this->m_profile.instance_name << "] Start WholeBodyMasterSlave" << std::endl;
-    return true;
-  }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
-    return false;
-  }
-}
-bool ActKinStabilizer::stopWholeBodyMasterSlave(void){
-  std::lock_guard<std::mutex> guard(this->mutex_);
-  if(this->mode_.isABCRunning()){
-    if(this->refToGenFrameConverter_.solveFKMode.getGoal() == 1.0){
-      std::cerr << "[" << this->m_profile.instance_name << "] WholeBodyMasterSlave is already stopped" << std::endl;
-      return false;
-    }
-    this->refToGenFrameConverter_.solveFKMode.setGoal(1.0, 5.0); // 5秒で遷移
-    std::cerr << "[" << this->m_profile.instance_name << "] Stop WholeBodyMasterSlave" << std::endl;
-    return true;
-  }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
-    return false;
-  }
-}
-
 bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param){
   std::lock_guard<std::mutex> guard(this->mutex_);
 
-  // ignore i_param.ee_name
-  if(this->mode_.now() == ControlMode::MODE_IDLE){
-    for(int i=0;i<this->gaitParam_.jointControllable.size();i++) this->gaitParam_.jointControllable[i] = false;
-    for(int i=0;i<i_param.controllable_joints.length();i++){
-      cnoid::LinkPtr joint = this->gaitParam_.genRobot->link(std::string(i_param.controllable_joints[i]));
-      if(joint) this->gaitParam_.jointControllable[joint->jointId()] = true;
-    }
-  }
-  this->mode_.abc_start_transition_time = std::max(i_param.abc_start_transition_time, 0.01);
-  this->mode_.abc_stop_transition_time = std::max(i_param.abc_stop_transition_time, 0.01);
-  this->mode_.st_start_transition_time = std::max(i_param.st_start_transition_time, 0.01);
-  this->mode_.st_stop_transition_time = std::max(i_param.st_stop_transition_time, 0.01);
-
-  if(i_param.default_zmp_offsets.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS; i++) {
-      if(i_param.default_zmp_offsets[i].length() == 2){
-        cnoid::Vector3 copOffset = cnoid::Vector3::Zero();
-        for(int j=0;j<2;j++) copOffset[j] = i_param.default_zmp_offsets[i][j];
-        if(copOffset != this->gaitParam_.copOffset[i].getGoal()) {
-          if(this->mode_.isABCRunning()) this->gaitParam_.copOffset[i].setGoal(copOffset, 2.0); // 2.0[s]で補間
-          else this->gaitParam_.copOffset[i].reset(copOffset);
-        }
-      }
-    }
-  }
-  if(i_param.leg_hull.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      std::vector<cnoid::Vector3> vertices;
-      for(int j=0;j<i_param.leg_hull[i].length();j++) vertices.emplace_back(i_param.leg_hull[i][j][0],i_param.leg_hull[i][j][1],0.0);
-      vertices = mathutil::calcConvexHull(vertices);
-      if(vertices.size() > 0) this->gaitParam_.legHull[i] = vertices;
-    }
-  }
-  if(i_param.leg_default_translate_pos.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS; i++) {
-      cnoid::Vector3 defaultTranslatePos = cnoid::Vector3::Zero();
-      defaultTranslatePos[1] = i_param.leg_default_translate_pos[i];
-      if(defaultTranslatePos != this->gaitParam_.defaultTranslatePos[i].getGoal()){
-        if(this->mode_.isABCRunning()) this->gaitParam_.defaultTranslatePos[i].setGoal(defaultTranslatePos, 2.0); // 2.0[s]で補間
-        this->gaitParam_.defaultTranslatePos[i].reset(defaultTranslatePos);
-      }
-    }
-  }
-  if(i_param.is_manual_control_mode.length() == NUM_LEGS && (!i_param.is_manual_control_mode[RLEG] || !i_param.is_manual_control_mode[LLEG])){
-    for(int i=0;i<NUM_LEGS; i++) {
-      if(this->mode_.isABCRunning()) {
-        if(i_param.is_manual_control_mode[i] != (this->gaitParam_.isManualControlMode[i].getGoal() == 1.0)){
-          if(i_param.is_manual_control_mode[i]){
-            if(this->gaitParam_.isStatic() && !this->gaitParam_.footstepNodesList[0].isSupportPhase[i]) {
-              this->gaitParam_.isManualControlMode[i].setGoal(1.0, 2.0); // 2.0[s]で遷移
-            }
-          }else{
-            this->gaitParam_.isManualControlMode[i].setGoal(0.0, 2.0); // 2.0[s]で遷移
-          }
-        }
-      }else{
-        this->gaitParam_.isManualControlMode[i].reset(i_param.is_manual_control_mode[i] ? 1.0 : 0.0);
-      }
-    }
-  }
-
-  if((this->refToGenFrameConverter_.handFixModeX.getGoal() == 1.0) != i_param.is_hand_fix_mode_x) {
-    if(this->mode_.isABCRunning()) this->refToGenFrameConverter_.handFixModeX.setGoal(i_param.is_hand_fix_mode_x ? 1.0 : 0.0, 1.0); // 1.0[s]で補間
-    else this->refToGenFrameConverter_.handFixModeX.reset(i_param.is_hand_fix_mode_x ? 1.0 : 0.0);
-  }
-  if((this->refToGenFrameConverter_.handFixModeY.getGoal() == 1.0) != i_param.is_hand_fix_mode) {
-    if(this->mode_.isABCRunning()) this->refToGenFrameConverter_.handFixModeY.setGoal(i_param.is_hand_fix_mode ? 1.0 : 0.0, 1.0); // 1.0[s]で補間
-    else this->refToGenFrameConverter_.handFixModeY.reset(i_param.is_hand_fix_mode ? 1.0 : 0.0);
-  }
-  if(i_param.reference_frame.length() == NUM_LEGS && (i_param.reference_frame[RLEG] || i_param.reference_frame[LLEG])){
-    for(int i=0;i<NUM_LEGS;i++) {
-      if(this->mode_.isABCRunning()) this->refToGenFrameConverter_.refFootOriginWeight[i].setGoal(i_param.reference_frame[i] ? 1.0 : 0.0, 1.0); // 1.0[s]で補間
-      else this->refToGenFrameConverter_.refFootOriginWeight[i].reset(i_param.reference_frame[i] ? 1.0 : 0.0);
-    }
-  }
-
-  if(i_param.rpy_offset.length() == 3){
-    for(int i=0;i<3;i++) {
-      this->actToGenFrameConverter_.rpyOffset[i] = i_param.rpy_offset[i];
-    }
-  }
-
-  this->externalForceHandler_.useDisturbanceCompensation = i_param.use_disturbance_compensation;
-  this->externalForceHandler_.disturbanceCompensationTimeConst = std::max(i_param.disturbance_compensation_time_const, 0.01);
-  this->externalForceHandler_.disturbanceCompensationStepNum = std::max(i_param.disturbance_compensation_step_num, 1);
-  this->externalForceHandler_.disturbanceCompensationLimit = std::max(i_param.disturbance_compensation_limit, 0.0);
-
-  if(i_param.impedance_M_p.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_D_p.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_K_p.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_M_r.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_D_r.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_K_r.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_force_gain.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_moment_gain.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_pos_compensation_limit.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.impedance_rot_compensation_limit.length() == this->gaitParam_.endEffectors.size()){
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      if(i_param.impedance_M_p[i].length() == 3 &&
-         i_param.impedance_D_p[i].length() == 3 &&
-         i_param.impedance_K_p[i].length() == 3 &&
-         i_param.impedance_M_r[i].length() == 3 &&
-         i_param.impedance_D_r[i].length() == 3 &&
-         i_param.impedance_K_r[i].length() == 3 &&
-         i_param.impedance_force_gain[i].length() == 3 &&
-         i_param.impedance_moment_gain[i].length() == 3 &&
-         i_param.impedance_pos_compensation_limit[i].length() == 3 &&
-         i_param.impedance_rot_compensation_limit[i].length() == 3){
-        for(int j=0;j<3;j++){
-          this->impedanceController_.M[i][j] = std::max(i_param.impedance_M_p[i][j], 0.0);
-          this->impedanceController_.D[i][j] = std::max(i_param.impedance_D_p[i][j], 0.0);
-          this->impedanceController_.K[i][j] = std::max(i_param.impedance_K_p[i][j], 0.0);
-          this->impedanceController_.M[i][3+j] = std::max(i_param.impedance_M_r[i][j], 0.0);
-          this->impedanceController_.D[i][3+j] = std::max(i_param.impedance_D_r[i][j], 0.0);
-          this->impedanceController_.K[i][3+j] = std::max(i_param.impedance_K_r[i][j], 0.0);
-          this->impedanceController_.wrenchGain[i][j] = std::max(i_param.impedance_force_gain[i][j], 0.0);
-          this->impedanceController_.wrenchGain[i][3+j] = std::max(i_param.impedance_moment_gain[i][j], 0.0);
-          if(!this->impedanceController_.isImpedanceMode[i]){
-            this->impedanceController_.compensationLimit[i][j] = std::max(i_param.impedance_pos_compensation_limit[i][j], 0.0);
-            this->impedanceController_.compensationLimit[i][3+j] = std::max(i_param.impedance_rot_compensation_limit[i][j], 0.0);
-          }
-        }
-      }
-    }
-  }
-
-  this->cmdVelGenerator_.isGraspLessManipMode = i_param.graspless_manip_mode;
-  {
-    std::vector<double> grasplessManipArm;
-    for(int i=0;i<i_param.graspless_manip_arm.length();i++){
-      for(int j=0;j<this->gaitParam_.endEffectors.size();j++){
-        if(this->gaitParam_.endEffectors[j].name == std::string(i_param.graspless_manip_arm[i])){
-          grasplessManipArm.push_back(j);
-          break;
-        }
-      }
-    }
-    if(grasplessManipArm.size() <= 2) this->cmdVelGenerator_.graspLessManipArm = grasplessManipArm;
-  }
-  if(i_param.graspless_manip_time_const.length() == 3){
-    for(int i=0;i<3;i++){
-      this->cmdVelGenerator_.graspLessManipTimeConst[i] = std::max(i_param.graspless_manip_time_const[i], 0.01);
-    }
-  }
-
-  this->footStepGenerator_.legCollisionMargin = std::max(i_param.leg_collision_margin, 0.0);
-  this->footStepGenerator_.defaultStepTime = std::max(i_param.default_step_time, 0.01);
-  if(i_param.default_stride_limitation_max_theta.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      this->footStepGenerator_.defaultStrideLimitationMaxTheta[i] = std::max(i_param.default_stride_limitation_max_theta[i], 0.0);
-    }
-  }
-  if(i_param.default_stride_limitation_min_theta.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      this->footStepGenerator_.defaultStrideLimitationMinTheta[i] = std::min(i_param.default_stride_limitation_min_theta[i], 0.0);
-    }
-  }
-  if(i_param.default_stride_limitation.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      std::vector<cnoid::Vector3> vertices;
-      for(int j=0;j<i_param.default_stride_limitation[i].length();j++) vertices.emplace_back(i_param.default_stride_limitation[i][j][0],i_param.default_stride_limitation[i][j][1],0.0);
-      vertices = mathutil::calcConvexHull(vertices);
-      if(vertices.size() > 0) this->footStepGenerator_.defaultStrideLimitationHull[i] = vertices;
-    }
-  }
-  this->footStepGenerator_.defaultDoubleSupportRatio = std::min(std::max(i_param.default_double_support_ratio, 0.01), 0.99);
-  this->footStepGenerator_.defaultStepHeight = std::max(i_param.default_step_height, 0.0);
-  this->footStepGenerator_.goVelocityStepNum = std::max(i_param.go_velocity_step_num, 1);
-  this->footStepGenerator_.isModifyFootSteps = i_param.modify_footsteps;
-  this->footStepGenerator_.overwritableRemainTime = std::max(i_param.overwritable_remain_time, std::max(i_param.swing_trajectory_delay_time_offset, 0.0));
-  this->footStepGenerator_.overwritableMinTime = std::max(i_param.overwritable_min_time, 0.01);
-  this->footStepGenerator_.overwritableMinStepTime = std::max(i_param.overwritable_min_step_time, 0.01);
-  this->footStepGenerator_.overwritableMaxStepTime = std::max(i_param.overwritable_max_step_time, this->footStepGenerator_.overwritableMinStepTime);
-  this->footStepGenerator_.overwritableMaxSwingVelocity = std::max(i_param.overwritable_max_swing_velocity, 0.0);
-  if(i_param.safe_leg_hull.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      std::vector<cnoid::Vector3> vertices;
-      for(int j=0;j<i_param.safe_leg_hull[i].length();j++) vertices.emplace_back(i_param.safe_leg_hull[i][j][0],i_param.safe_leg_hull[i][j][1],0.0);
-      vertices = mathutil::calcConvexHull(vertices);
-      if(vertices.size() > 0) this->footStepGenerator_.safeLegHull[i] = vertices;
-    }
-  }
-  if(i_param.overwritable_stride_limitation_max_theta.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      this->footStepGenerator_.overwritableStrideLimitationMaxTheta[i] = std::max(i_param.overwritable_stride_limitation_max_theta[i], 0.0);
-    }
-  }
-  if(i_param.overwritable_stride_limitation_min_theta.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      this->footStepGenerator_.overwritableStrideLimitationMinTheta[i] = std::min(i_param.overwritable_stride_limitation_min_theta[i], 0.0);
-    }
-  }
-  if(!this->mode_.isABCRunning() || this->gaitParam_.isStatic()){
-    if(i_param.overwritable_stride_limitation.length() == NUM_LEGS){
-      for(int i=0;i<NUM_LEGS;i++){
-        std::vector<cnoid::Vector3> vertices;
-        for(int j=0;j<i_param.overwritable_stride_limitation[i].length();j++) vertices.emplace_back(i_param.overwritable_stride_limitation[i][j][0],i_param.overwritable_stride_limitation[i][j][1],0.0);
-        vertices = mathutil::calcConvexHull(vertices);
-        if(vertices.size() > 0) this->footStepGenerator_.overwritableStrideLimitationHull[i] = vertices;
-      }
-    }
-  }
-  this->footStepGenerator_.overwritableMaxLandingHeight = i_param.overwritable_max_landing_height;
-  this->footStepGenerator_.overwritableMinLandingHeight = std::min(i_param.overwritable_min_landing_height, this->footStepGenerator_.overwritableMaxLandingHeight);
-  this->footStepGenerator_.overwritableMaxGenGroundZVelocity = std::max(i_param.overwritable_max_gen_ground_z_velocity, 0.01);
-  this->footStepGenerator_.overwritableMaxSrcGroundZVelocity = std::max(i_param.overwritable_max_src_ground_z_velocity, 0.01);
-  this->footStepGenerator_.contactDetectionThreshold = i_param.contact_detection_threshold;
-  this->footStepGenerator_.contactModificationThreshold = std::max(i_param.contact_modification_threshold, 0.0);
-  this->footStepGenerator_.isEmergencyStepMode = i_param.is_emergency_step_mode;
-  this->footStepGenerator_.isStableGoStopMode = i_param.is_stable_go_stop_mode;
-  this->footStepGenerator_.emergencyStepNum = std::max(i_param.emergency_step_num, 1);
-  this->footStepGenerator_.emergencyStepCpCheckMargin = std::max(i_param.emergency_step_cp_check_margin, 0.0);
-  this->footStepGenerator_.touchVel = std::max(i_param.swing_trajectory_touch_vel, 0.001);
-  if(!this->mode_.isABCRunning() || this->gaitParam_.isStatic()) this->footStepGenerator_.goalOffset = std::min(i_param.goal_offset, 0.0);
-
-  this->legCoordsGenerator_.delayTimeOffset = std::max(i_param.swing_trajectory_delay_time_offset, 0.0);
-  this->legCoordsGenerator_.finalDistanceWeight = std::max(i_param.swing_trajectory_final_distance_weight, 0.01);
-  this->legCoordsGenerator_.previewStepNum = std::max(i_param.preview_step_num, 2);
-  this->legCoordsGenerator_.footGuidedBalanceTime = std::max(i_param.footguided_balance_time, 0.01);
-
-  if(i_param.ee_p.length() == this->gaitParam_.endEffectors.size() &&
-     i_param.ee_d.length() == this->gaitParam_.endEffectors.size()){
-    for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-      if(i_param.ee_p[i].length() == this->stabilizer_.ee_K[i].size() &&
-         i_param.ee_d[i].length() == this->stabilizer_.ee_D[i].size()){
-        for(int j=0;j<this->stabilizer_.ee_K[i].size();j++){
-          this->stabilizer_.ee_K[i][j] = std::max(i_param.ee_p[i][j], 0.0);
-          this->stabilizer_.ee_D[i][j] = std::max(i_param.ee_d[i][j], 0.0);
-        }
-      }
-    }
-  }
-  if(i_param.ee_support_d.length() == NUM_LEGS &&
-     i_param.ee_landing_p.length() == NUM_LEGS &&
-     i_param.ee_landing_d.length() == NUM_LEGS &&
-     i_param.ee_swing_p.length() == NUM_LEGS &&
-     i_param.ee_swing_d.length() == NUM_LEGS){
-    for(int i=0;i<NUM_LEGS;i++){
-      if(i_param.ee_support_d[i].length() == this->stabilizer_.ee_support_D[i].size() &&
-         i_param.ee_landing_p[i].length() == this->stabilizer_.ee_landing_K[i].size() &&
-         i_param.ee_landing_d[i].length() == this->stabilizer_.ee_landing_D[i].size() &&
-         i_param.ee_swing_p[i].length() == this->stabilizer_.ee_swing_K[i].size() &&
-         i_param.ee_swing_d[i].length() == this->stabilizer_.ee_swing_D[i].size()){
-        for(int j=0;j<this->stabilizer_.ee_support_D[i].size();j++){
-          this->stabilizer_.ee_support_D[i][j] = std::max(i_param.ee_support_d[i][j], 0.0);
-          this->stabilizer_.ee_landing_K[i][j] = std::max(i_param.ee_landing_p[i][j], 0.0);
-          this->stabilizer_.ee_landing_D[i][j] = std::max(i_param.ee_landing_d[i][j], 0.0);
-          this->stabilizer_.ee_swing_K[i][j] = std::max(i_param.ee_swing_p[i][j], 0.0);
-          this->stabilizer_.ee_swing_D[i][j] = std::max(i_param.ee_swing_d[i][j], 0.0);
-        }
-      }
-    }
-  }
-  if(i_param.root_p.length() == 3 &&
-     i_param.root_d.length() == 3){
-    for(int i=0;i<3;i++) {
-      this->stabilizer_.root_K[i] = std::max(i_param.root_p[i], 0.0);
-      this->stabilizer_.root_D[i] = std::max(i_param.root_d[i], 0.0);
-    }
-  }
-  this->stabilizer_.joint_K = std::max(i_param.joint_p, 0.0);
-  this->stabilizer_.joint_D = std::max(i_param.joint_d, 0.0);
-  if(i_param.st_dq_weight.length() == this->stabilizer_.aikdqWeight.size()){
-    for(int i=0;i<this->stabilizer_.aikdqWeight.size();i++){
-      double value = std::max(0.01, i_param.st_dq_weight[i]);
-      if(value != this->stabilizer_.aikdqWeight[i].getGoal()) this->stabilizer_.aikdqWeight[i].setGoal(value, 2.0); // 2秒で遷移
-    }
-  }
-  if(i_param.dq_weight.length() == this->stabilizer_.ikdqWeight.size()){
-    for(int i=0;i<this->stabilizer_.ikdqWeight.size();i++){
-      double value = std::max(0.01, i_param.dq_weight[i]);
-      if(value != this->stabilizer_.ikdqWeight[i].getGoal()) this->stabilizer_.ikdqWeight[i].setGoal(value, 2.0); // 2秒で遷移
-    }
-  }
-
+  // TODO
   return true;
 }
 bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param) {
   std::lock_guard<std::mutex> guard(this->mutex_);
 
-  i_param.ee_name.length(this->gaitParam_.endEffectors.size());
-  for(int i=0;i<this->gaitParam_.endEffectors.size();i++) i_param.ee_name[i] = this->gaitParam_.endEffectors[i].name.c_str();
-  std::vector<std::string> controllable_joints;
-  for(int i=0;i<this->gaitParam_.jointControllable.size();i++) if(this->gaitParam_.jointControllable[i]) controllable_joints.push_back(this->gaitParam_.genRobot->joint(i)->name());
-  i_param.controllable_joints.length(controllable_joints.size());
-  for(int i=0;i<controllable_joints.size();i++) i_param.controllable_joints[i] = controllable_joints[i].c_str();
-  i_param.abc_start_transition_time = this->mode_.abc_start_transition_time;
-  i_param.abc_stop_transition_time = this->mode_.abc_stop_transition_time;
-  i_param.st_start_transition_time = this->mode_.st_start_transition_time;
-  i_param.st_stop_transition_time = this->mode_.st_stop_transition_time;
-
-  i_param.default_zmp_offsets.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS; i++) {
-    i_param.default_zmp_offsets[i].length(2);
-    for(int j=0;j<2;j++) i_param.default_zmp_offsets[i][j] = this->gaitParam_.copOffset[i].value()[j];
-  }
-  i_param.leg_hull.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.leg_hull[i].length(this->gaitParam_.legHull[i].size());
-    for(int j=0;j<this->gaitParam_.legHull[i].size(); j++) {
-      i_param.leg_hull[i][j].length(2);
-      for(int k=0;k<2;k++) i_param.leg_hull[i][j][k] = this->gaitParam_.legHull[i][j][k];
-    }
-  }
-  i_param.leg_default_translate_pos.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS; i++) {
-    i_param.leg_default_translate_pos[i] = this->gaitParam_.defaultTranslatePos[i].value()[1];
-  }
-  i_param.is_manual_control_mode.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS; i++) {
-    i_param.is_manual_control_mode[i] = (this->gaitParam_.isManualControlMode[i].getGoal() == 1.0);
-  }
-
-  i_param.is_hand_fix_mode = (this->refToGenFrameConverter_.handFixModeY.getGoal() == 1.0);
-  i_param.is_hand_fix_mode_x = (this->refToGenFrameConverter_.handFixModeX.getGoal() == 1.0);
-  i_param.reference_frame.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++) {
-    i_param.reference_frame[i] = (this->refToGenFrameConverter_.refFootOriginWeight[i].getGoal() == 1.0);
-  }
-
-  i_param.rpy_offset.length(3);
-  for(int i=0;i<3;i++) {
-    i_param.rpy_offset[i] = this->actToGenFrameConverter_.rpyOffset[i];
-  }
-
-  i_param.use_disturbance_compensation = this->externalForceHandler_.useDisturbanceCompensation;
-  i_param.disturbance_compensation_time_const = this->externalForceHandler_.disturbanceCompensationTimeConst;
-  i_param.disturbance_compensation_step_num = this->externalForceHandler_.disturbanceCompensationStepNum;
-  i_param.disturbance_compensation_limit = this->externalForceHandler_.disturbanceCompensationLimit;
-
-  i_param.impedance_M_p.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_D_p.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_K_p.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_M_r.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_D_r.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_K_r.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_force_gain.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_moment_gain.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_pos_compensation_limit.length(this->gaitParam_.endEffectors.size());
-  i_param.impedance_rot_compensation_limit.length(this->gaitParam_.endEffectors.size());
-  for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-    i_param.impedance_M_p[i].length(3);
-    i_param.impedance_D_p[i].length(3);
-    i_param.impedance_K_p[i].length(3);
-    i_param.impedance_M_r[i].length(3);
-    i_param.impedance_D_r[i].length(3);
-    i_param.impedance_K_r[i].length(3);
-    i_param.impedance_force_gain[i].length(3);
-    i_param.impedance_moment_gain[i].length(3);
-    i_param.impedance_pos_compensation_limit[i].length(3);
-    i_param.impedance_rot_compensation_limit[i].length(3);
-    for(int j=0;j<3;j++){
-      i_param.impedance_M_p[i][j] = this->impedanceController_.M[i][j];
-      i_param.impedance_D_p[i][j] = this->impedanceController_.D[i][j];
-      i_param.impedance_K_p[i][j] = this->impedanceController_.K[i][j];
-      i_param.impedance_M_r[i][j] = this->impedanceController_.M[i][3+j];
-      i_param.impedance_D_r[i][j] = this->impedanceController_.D[i][3+j];
-      i_param.impedance_K_r[i][j] = this->impedanceController_.K[i][3+j];
-      i_param.impedance_force_gain[i][j] = this->impedanceController_.wrenchGain[i][j];
-      i_param.impedance_moment_gain[i][j] = this->impedanceController_.wrenchGain[i][3+j];
-      i_param.impedance_pos_compensation_limit[i][j] = this->impedanceController_.compensationLimit[i][j];
-      i_param.impedance_rot_compensation_limit[i][j] = this->impedanceController_.compensationLimit[i][3+j];
-    }
-  }
-
-  i_param.graspless_manip_mode = this->cmdVelGenerator_.isGraspLessManipMode;
-  i_param.graspless_manip_arm.length(this->cmdVelGenerator_.graspLessManipArm.size());
-  for(int i=0;i<this->cmdVelGenerator_.graspLessManipArm.size();i++){
-    i_param.graspless_manip_arm[i] = this->gaitParam_.endEffectors[this->cmdVelGenerator_.graspLessManipArm[i]].name.c_str();
-  }
-  i_param.graspless_manip_time_const.length(3);
-  for(int i=0;i<3;i++){
-    i_param.graspless_manip_time_const[i] = this->cmdVelGenerator_.graspLessManipTimeConst[i];
-  }
-
-  i_param.leg_collision_margin = this->footStepGenerator_.legCollisionMargin;
-  i_param.default_step_time = this->footStepGenerator_.defaultStepTime;
-  i_param.default_stride_limitation_max_theta.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.default_stride_limitation_max_theta[i] = this->footStepGenerator_.defaultStrideLimitationMaxTheta[i];
-  }
-  i_param.default_stride_limitation_min_theta.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.default_stride_limitation_min_theta[i] = this->footStepGenerator_.defaultStrideLimitationMinTheta[i];
-  }
-  i_param.default_stride_limitation.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.default_stride_limitation[i].length(this->footStepGenerator_.defaultStrideLimitationHull[i].size());
-    for(int j=0;j<this->footStepGenerator_.defaultStrideLimitationHull[i].size(); j++) {
-      i_param.default_stride_limitation[i][j].length(2);
-      for(int k=0;k<2;k++) i_param.default_stride_limitation[i][j][k] = this->footStepGenerator_.defaultStrideLimitationHull[i][j][k];
-    }
-  }
-  i_param.default_double_support_ratio = this->footStepGenerator_.defaultDoubleSupportRatio;
-  i_param.default_step_height = this->footStepGenerator_.defaultStepHeight;
-  i_param.go_velocity_step_num = this->footStepGenerator_.goVelocityStepNum;
-  i_param.modify_footsteps = this->footStepGenerator_.isModifyFootSteps;
-  i_param.overwritable_remain_time = this->footStepGenerator_.overwritableRemainTime;
-  i_param.overwritable_min_time = this->footStepGenerator_.overwritableMinTime;
-  i_param.overwritable_min_step_time = this->footStepGenerator_.overwritableMinStepTime;
-  i_param.overwritable_max_step_time = this->footStepGenerator_.overwritableMaxStepTime;
-  i_param.overwritable_max_swing_velocity = this->footStepGenerator_.overwritableMaxSwingVelocity;
-  i_param.safe_leg_hull.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.safe_leg_hull[i].length(this->footStepGenerator_.safeLegHull[i].size());
-    for(int j=0;j<this->footStepGenerator_.safeLegHull[i].size(); j++) {
-      i_param.safe_leg_hull[i][j].length(2);
-      for(int k=0;k<2;k++) i_param.safe_leg_hull[i][j][k] = this->footStepGenerator_.safeLegHull[i][j][k];
-    }
-  }
-  i_param.overwritable_stride_limitation_max_theta.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.overwritable_stride_limitation_max_theta[i] = this->footStepGenerator_.overwritableStrideLimitationMaxTheta[i];
-  }
-  i_param.overwritable_stride_limitation_min_theta.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.overwritable_stride_limitation_min_theta[i] = this->footStepGenerator_.overwritableStrideLimitationMinTheta[i];
-  }
-  i_param.overwritable_stride_limitation.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.overwritable_stride_limitation[i].length(this->footStepGenerator_.overwritableStrideLimitationHull[i].size());
-    for(int j=0;j<this->footStepGenerator_.overwritableStrideLimitationHull[i].size(); j++) {
-      i_param.overwritable_stride_limitation[i][j].length(2);
-      for(int k=0;k<2;k++) i_param.overwritable_stride_limitation[i][j][k] = this->footStepGenerator_.overwritableStrideLimitationHull[i][j][k];
-    }
-  }
-  i_param.overwritable_max_landing_height = this->footStepGenerator_.overwritableMaxLandingHeight;
-  i_param.overwritable_min_landing_height = this->footStepGenerator_.overwritableMinLandingHeight;
-  i_param.overwritable_max_gen_ground_z_velocity = this->footStepGenerator_.overwritableMaxGenGroundZVelocity;
-  i_param.overwritable_max_src_ground_z_velocity = this->footStepGenerator_.overwritableMaxSrcGroundZVelocity;
-  i_param.contact_detection_threshold = this->footStepGenerator_.contactDetectionThreshold;
-  i_param.contact_modification_threshold = this->footStepGenerator_.contactModificationThreshold;
-  i_param.is_emergency_step_mode = this->footStepGenerator_.isEmergencyStepMode;
-  i_param.is_stable_go_stop_mode = this->footStepGenerator_.isStableGoStopMode;
-  i_param.emergency_step_num = this->footStepGenerator_.emergencyStepNum;
-  i_param.emergency_step_cp_check_margin = this->footStepGenerator_.emergencyStepCpCheckMargin;
-  i_param.goal_offset = this->footStepGenerator_.goalOffset;
-  i_param.swing_trajectory_touch_vel = this->footStepGenerator_.touchVel;
-
-  i_param.swing_trajectory_delay_time_offset = this->legCoordsGenerator_.delayTimeOffset;
-  i_param.swing_trajectory_final_distance_weight = this->legCoordsGenerator_.finalDistanceWeight;
-  i_param.preview_step_num = this->legCoordsGenerator_.previewStepNum;
-  i_param.footguided_balance_time = this->legCoordsGenerator_.footGuidedBalanceTime;
-
-  i_param.ee_p.length(this->gaitParam_.endEffectors.size());
-  i_param.ee_d.length(this->gaitParam_.endEffectors.size());
-  for(int i=0;i<this->gaitParam_.endEffectors.size();i++){
-    i_param.ee_p[i].length(6);
-    i_param.ee_d[i].length(6);
-    for(int j=0;j<6;j++){
-      i_param.ee_p[i][j] = this->stabilizer_.ee_K[i][j];
-      i_param.ee_d[i][j] = this->stabilizer_.ee_D[i][j];
-    }
-  }
-  i_param.ee_support_d.length(NUM_LEGS);
-  i_param.ee_landing_p.length(NUM_LEGS);
-  i_param.ee_landing_d.length(NUM_LEGS);
-  i_param.ee_swing_p.length(NUM_LEGS);
-  i_param.ee_swing_d.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.ee_support_d[i].length(6);
-    i_param.ee_landing_p[i].length(6);
-    i_param.ee_landing_d[i].length(6);
-    i_param.ee_swing_p[i].length(6);
-    i_param.ee_swing_d[i].length(6);
-    for(int j=0;j<6;j++){
-      i_param.ee_support_d[i][j] = this->stabilizer_.ee_support_D[i][j];
-      i_param.ee_landing_p[i][j] = this->stabilizer_.ee_landing_K[i][j];
-      i_param.ee_landing_d[i][j] = this->stabilizer_.ee_landing_D[i][j];
-      i_param.ee_swing_p[i][j] = this->stabilizer_.ee_swing_K[i][j];
-      i_param.ee_swing_d[i][j] = this->stabilizer_.ee_swing_D[i][j];
-    }
-  }
-  i_param.root_p.length(3);
-  for(int i=0;i<3;i++) i_param.root_p[i] = this->stabilizer_.root_K[i];
-  i_param.root_d.length(3);
-  for(int i=0;i<3;i++) i_param.root_d[i] = this->stabilizer_.root_D[i];
-  i_param.joint_p = this->stabilizer_.joint_K;
-  i_param.joint_d = this->stabilizer_.joint_D;
-  i_param.st_dq_weight.length(this->stabilizer_.aikdqWeight.size());
-  for(int i=0;i<this->stabilizer_.aikdqWeight.size();i++){
-    i_param.st_dq_weight[i] = this->stabilizer_.aikdqWeight[i].getGoal();
-  }
-
-  i_param.dq_weight.length(this->stabilizer_.ikdqWeight.size());
-  for(int i=0;i<this->stabilizer_.ikdqWeight.size();i++){
-    i_param.dq_weight[i] = this->stabilizer_.ikdqWeight[i].getGoal();
-  }
-
-  return true;
-}
-
-bool ActKinStabilizer::getFootStepState(actkin_stabilizer::ActKinStabilizerService::FootStepState& i_param) {
-  std::lock_guard<std::mutex> guard(this->mutex_);
-
-  i_param.leg_coords.length(NUM_LEGS);
-  i_param.support_leg.length(NUM_LEGS);
-  i_param.leg_src_coords.length(NUM_LEGS);
-  i_param.leg_dst_coords.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS;i++){
-    i_param.leg_coords[i].leg = this->gaitParam_.endEffectors[i].name.c_str();
-    ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.genCoords[i].value(), i_param.leg_coords[i]);
-    i_param.support_leg[i] = this->gaitParam_.footstepNodesList[0].isSupportPhase[i];
-    i_param.leg_src_coords[i].leg = this->gaitParam_.endEffectors[i].name.c_str();
-    ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.srcCoords[i], i_param.leg_src_coords[i]);
-    i_param.leg_dst_coords[i].leg = this->gaitParam_.endEffectors[i].name.c_str();
-    ActKinStabilizer::copyEigenCoords2FootStep(this->gaitParam_.footstepNodesList[0].dstCoords[i], i_param.leg_dst_coords[i]);
-  }
-  // 現在支持脚、または現在遊脚で次支持脚になる脚の、dstCoordsの中間. 水平
-  std::vector<double> weights(NUM_LEGS, 0.0);
-  for(int i=0;i<NUM_LEGS; i++){
-    if(this->gaitParam_.footstepNodesList[0].isSupportPhase[i] ||
-       (this->gaitParam_.footstepNodesList.size() > 1 && this->gaitParam_.footstepNodesList[1].isSupportPhase[i]))
-      weights[i] = 1.0;
-  }
-  if(weights[RLEG] == 0.0 && weights[LLEG] == 0.0) {
-    weights[RLEG] = 1.0; weights[LLEG] = 1.0;
-  }
-  if(weights[RLEG] == 1.0 && weights[LLEG] == 1.0) i_param.dst_foot_midcoords.leg = "both";
-  else if(weights[RLEG] == 1.0) i_param.dst_foot_midcoords.leg = "rleg";
-  else if(weights[LLEG] == 1.0) i_param.dst_foot_midcoords.leg = "lleg";
-  ActKinStabilizer::copyEigenCoords2FootStep(mathutil::orientCoordToAxis(mathutil::calcMidCoords(this->gaitParam_.footstepNodesList[0].dstCoords, weights), cnoid::Vector3::UnitZ()), i_param.dst_foot_midcoords);
-  i_param.is_manual_control_mode.length(NUM_LEGS);
-  for(int i=0;i<NUM_LEGS; i++) {
-    i_param.is_manual_control_mode[i] = (this->gaitParam_.isManualControlMode[i].getGoal() == 1.0);
-  }
-  i_param.joint_angle.length(this->gaitParam_.genRobot->numJoints());
-  for(int i=0;i<this->gaitParam_.genRobot->numJoints();i++){
-    i_param.joint_angle[i] = this->gaitParam_.genRobot->joint(i)->q();
-  }
+  // TODO
   return true;
 }
 
@@ -1761,15 +852,6 @@ bool ActKinStabilizer::getProperty(const std::string& key, std::string& ret) {
   }
   std::cerr << "[" << this->m_profile.instance_name << "] " << key << ": " << ret <<std::endl;
   return true;
-}
-
-// static function
-void ActKinStabilizer::copyEigenCoords2FootStep(const cnoid::Position& in_fs, actkin_stabilizer::ActKinStabilizerService::Footstep& out_fs){
-  out_fs.pos.length(3);
-  for(int j=0;j<3;j++) out_fs.pos[j] = in_fs.translation()[j];
-  out_fs.rot.length(4);
-  Eigen::Quaterniond quat(in_fs.linear());
-  out_fs.rot[0] = quat.w(); out_fs.rot[1] = quat.x(); out_fs.rot[2] = quat.y(); out_fs.rot[3] = quat.z();
 }
 
 extern "C"{
