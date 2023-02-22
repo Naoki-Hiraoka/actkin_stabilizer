@@ -32,6 +32,7 @@ module actkin_stabilizer
     sequence<sequence<double> > C; // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
     sequence<double> ld;
     sequence<double> ud;
+    sequence<double> w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
   };
 
   struct AttentionParamIdl{
@@ -64,7 +65,7 @@ module actkin_stabilizer
     sequence<double> Kw; // - Kw * (Cw * 位置姿勢 - ldw|udw) を、目標反力として使う
     sequence<double> Dw; // - Dw * Cw * 速度 を、目標反力として使う
     sequence<double> limitw; // (Cw * 位置姿勢 - ldw|udw)に対するlimit
-    // 重心の場合、回転成分は無視する.全てworld系の座標軸を使う. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
+    // 重心の場合、回転成分は無視する. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
   };
 
   struct AttentionDataIdl{
