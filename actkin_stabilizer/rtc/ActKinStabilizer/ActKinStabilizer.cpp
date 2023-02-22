@@ -128,7 +128,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
 }
 
 // static function
-bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal){
+bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision){
   bool qRef_updated = false;
   if(ports.m_qRefIn_.isNew()){
     ports.m_qRefIn_.read();
@@ -369,61 +369,28 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
 }
 
 // static function
-bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator) {
+bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const ActToGenFrameConverter& actToGenFrameConverter, const ResolvedAccelerationController& resolvedAccelerationController, const WrenchDistributor& wrenchDistributor) {
   if(mode.isSyncToABCInit()){ // startAutoBalancer直後の初回. gaitParamのリセット
-    refToGenFrameConverter.initGenRobot(gaitParam,
-                                        gaitParam.genRobot, gaitParam.footMidCoords, gaitParam.genCog, gaitParam.genCogVel, gaitParam.genCogAcc);
-    actToGenFrameConverter.initOutput(gaitParam,
-                                      gaitParam.actCogVel, gaitParam.actRootVel);
-    externalForceHandler.initExternalForceHandlerOutput(gaitParam,
-                                                        gaitParam.omega, gaitParam.l);
-    impedanceController.initImpedanceOutput(gaitParam,
-                                            gaitParam.icEEOffset);
-    footStepGenerator.initFootStepNodesList(gaitParam,
-                                            gaitParam.footstepNodesList, gaitParam.srcCoords, gaitParam.dstCoordsOrg, gaitParam.remainTimeOrg, gaitParam.swingState, gaitParam.elapsedTime, gaitParam.prevSupportPhase);
-    legCoordsGenerator.initLegCoords(gaitParam,
-                                     gaitParam.refZmpTraj, gaitParam.genCoords);
+    gaitParam.onStartAutoBalancer();
   }
 
-  // FootOrigin座標系を用いてrefRobotRawをgenerate frameに投影しrefRobotとする
-  refToGenFrameConverter.convertFrame(gaitParam, dt,
-                                      gaitParam.refRobot, gaitParam.refEEPose, gaitParam.refEEWrench, gaitParam.refdz, gaitParam.footMidCoords);
-
-  // FootOrigin座標系を用いてactRobotRawをgenerate frameに投影しactRobotとする
+  // robotとobjectsの位置姿勢と速度を更新する. actRobotRawとcontactsを用いて
   actToGenFrameConverter.convertFrame(gaitParam, dt,
-                                      gaitParam.actRobot, gaitParam.actEEPose, gaitParam.actEEWrench, gaitParam.actCog, gaitParam.actCogVel, gaitParam.actRootVel);
+                                      gaitParam.robot, gaitParam.activeObjects);
 
-  // 目標外力に応じてオフセットを計算する
-  externalForceHandler.handleExternalForce(gaitParam, mode.isSTRunning(), dt,
-                                           gaitParam.omega, gaitParam.l);
+  if(mode.isSTRunning()){
+    if(mode.isSyncToSTInit()){ // startStabilizer直後の初回. gaitParamのリセット
+      gaitParam.onStartStabilizer();
+    }
 
-  // Impedance Controller
-  impedanceController.calcImpedanceControl(dt, gaitParam,
-                                           gaitParam.icEEOffset, gaitParam.icEETargetPose);
+    // contactsとattentionsを満たすようにrobotとobjectsの目標加速度を求める
+    resolvedAccelerationController.solve(gaitParam, dt,
+                                         gaitParam.robot, gaitParam.activeObjects);
 
-  // Manual Control Modeの足の現在位置をreferenceで上書きする
-  legManualController.legManualControl(gaitParam, dt,
-                                       gaitParam.genCoords, gaitParam.footstepNodesList, gaitParam.isManualControlMode);
-
-  // CmdVelGenerator
-  cmdVelGenerator.calcCmdVel(gaitParam,
-                             gaitParam.cmdVel);
-
-  // ActKinBalancer
-  footStepGenerator.procFootStepNodesList(gaitParam, dt, mode.isSTRunning(),
-                                          gaitParam.footstepNodesList, gaitParam.srcCoords, gaitParam.dstCoordsOrg, gaitParam.remainTimeOrg, gaitParam.swingState, gaitParam.elapsedTime, gaitParam.prevSupportPhase, gaitParam.relLandingHeight);
-  footStepGenerator.calcFootSteps(gaitParam, dt, mode.isSTRunning(),
-                                  gaitParam.debugData, //for log
-                                  gaitParam.footstepNodesList);
-  legCoordsGenerator.calcLegCoords(gaitParam, dt, mode.isSTRunning(),
-                                   gaitParam.refZmpTraj, gaitParam.genCoords, gaitParam.swingState);
-  legCoordsGenerator.calcEETargetPose(gaitParam, dt,
-                                      gaitParam.abcEETargetPose, gaitParam.abcEETargetVel, gaitParam.abcEETargetAcc);
-
-  // Stabilizer
-  stabilizer.execStabilizer(gaitParam, dt, mode.isSTRunning(),
-                            gaitParam.debugData, //for log
-                            gaitParam.actRobotTqc, gaitParam.genRobot, gaitParam.genCog, gaitParam.genCogVel, gaitParam.genCogAcc);
+    // contactsに接触力を分配し、robotの目標関節トルクを求める
+    wrenchDistributor.solve(gaitParam, dt,
+                            gaitParam.robot);
+  }
 
   return true;
 }

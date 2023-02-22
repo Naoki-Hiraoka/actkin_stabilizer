@@ -21,24 +21,15 @@
 
 #include <cpp_filters/TwoPointInterpolator.h>
 
-// #include <cpp_filters/IIRFilter.h>
-// #include <joint_limit_table/JointLimitTable.h>
-
 #include <hrpsys/idl/RobotHardwareService.hh>
 #include <collision_checker_msgs/idl/Collision.hh>
 #include <auto_stabilizer_msgs/idl/AutoStabilizer.hh>
 
 #include "ActKinStabilizerService_impl.h"
 #include "GaitParam.h"
-#include "RefToGenFrameConverter.h"
 #include "ActToGenFrameConverter.h"
-#include "LegManualController.h"
-#include "FootStepGenerator.h"
-#include "LegCoordsGenerator.h"
-#include "ImpedanceController.h"
-#include "Stabilizer.h"
-#include "ExternalForceHandler.h"
-#include "CmdVelGenerator.h"
+#include "ResolvedAccelerationController.h"
+#include "WrenchDistributor.h"
 
 class ActKinStabilizer : public RTC::DataFlowComponentBase{
 public:
@@ -205,23 +196,17 @@ protected:
 
   GaitParam gaitParam_;
 
-  RefToGenFrameConverter refToGenFrameConverter_;
   ActToGenFrameConverter actToGenFrameConverter_;
-  ExternalForceHandler externalForceHandler_;
-  ImpedanceController impedanceController_;
-  LegManualController legManualController_;
-  CmdVelGenerator cmdVelGenerator_;
-  FootStepGenerator footStepGenerator_;
-  LegCoordsGenerator legCoordsGenerator_;
-  Stabilizer stabilizer_;
+  ResolvedAccelerationController resolvedAccelerationController_;
+  WrenchDistributor wrenchDistributor_;
 
 protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
 
-  static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<cnoid::Vector6>& refEEWrenchOrigin, std::vector<cpp_filters::TwoPointInterpolatorSE3>& refEEPoseRaw, std::vector<GaitParam::Collision>& selfCollision, std::vector<std::vector<cnoid::Vector3> >& steppableRegion, std::vector<double>& steppableHeight, double& relLandingHeight, cnoid::Vector3& relLandingNormal);
-  static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const FootStepGenerator& footStepGenerator, const LegCoordsGenerator& legCoordsGenerator, const RefToGenFrameConverter& refToGenFrameConverter, const ActToGenFrameConverter& actToGenFrameConverter, const ImpedanceController& impedanceController, const Stabilizer& stabilizer, const ExternalForceHandler& externalForceHandler, const LegManualController& legManualController, const CmdVelGenerator& cmdVelGenerator);
-  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter, std::vector<cpp_filters::TwoPointInterpolator<double> >& outputJointAngleFilter);
+  static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision);
+  static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const ActToGenFrameConverter& actToGenFrameConverter, const ResolvedAccelerationController& resolvedAccelerationController, const WrenchDistributor& wrenchDistributor);
+  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam);
 };
 
 

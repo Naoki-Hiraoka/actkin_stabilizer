@@ -31,10 +31,14 @@ public:
     body->calcForwardKinematics(true, true); body->calcCenterOfMass();
   }
 
-  void reset(){
+  void onExecute(double dt){
+  }
+  void onStartAutoBalancer(){
     for(int i=0;i<dqAct.size();i++) dqAct[i].reset(0.0);
     actRootVel.reset(cnoid::Vector6::Zero());
     actCogVel.reset(cnoid::Vector6::Zero());
+  }
+  void onStartStabilizer(){
   }
 };
 
@@ -53,10 +57,14 @@ public:
   cnoid::VectorX w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
 
 public:
-  void reset(){
+  void onExecute(double dt){
+  }
+  void onStartAutoBalancer(){
     cnoid::Position pose1 = link1 ? link1->T() * localPose1 : localPose1;
     this->prevLocalPose2 = link2 ? link2->T().inverse() * pose1 : pose1;
-  };
+  }
+  void onStartStabilizer(){
+  }
 
   // ActToGenFrameConverterで変更される
   cnoid::Position prevLocalPose2; // link2 frame.
@@ -92,10 +100,21 @@ public:
   // 重心の場合、回転成分は無視する. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
 
 public:
-  void reset(bool clearWrench=false){
+  void onExecute(double dt){
+    this->localPose1.interpolate(dt);
+    this->localPose2.interpolate(dt);
+    this->refWrench.interpolate(dt);
+  }
+  void goActual(bool clearWrench=false){
     cnoid::Position pose1 = link1 ? link1->T() * localPose1.value() : localPose1.value();
     this->localPose2.reset(link2 ? link2->T().inverse() * pose1 : pose1);
     if(clearWrench) this->refWrench.reset(cnoid::Vector6::Zero());
+  }
+  void onStartAutoBalancer(bool clearWrench=false){
+  }
+  void onStartStabilizer(){
+    this->goActual();
+    this->stateId++;
   }
 };
 
@@ -133,18 +152,20 @@ public:
   std::vector<Collision> envCollision;
   std::vector<Collision> objselfCollision;
   std::vector<Collision> objenvCollision;
-public:
-  // AutoStabilizerの中で計算更新される.
 
-  // ActToGenFrameConverter
   // world model (generate frame)
   std::shared_ptr<Object> robot;
   std::unordered_map<std::string, std::shared_ptr<Object> > objects; // [name, ptr]. 配列中に同じ実体を指すptrが複数あることは無い
   std::unordered_map<std::string, std::shared_ptr<Contact> > contacts; // [name, ptr]. 配列中に同じ実体を指すptrが複数あることは無い
   std::unordered_map<std::string, std::shared_ptr<Attention> > attentions; // [name, ptr]. 配列中に同じ実体を指すptrが複数あることは無い
 
-  // ResolvedAccelerationControlSolver. robotのddqの値として指令関節加速度が入る
+  // cache
+  std::vector<std::shared_ptr<Object> > activeObjects; // contactによってworldを介さずにrobotとつながっているobjects. 状態推定・RAC・WDで考慮する.
+  std::vector<std::vector<std::shared_ptr<Attention> > > prioritizedAttentions; // attentionsを優先度順に並び替えたもの
 
+
+  // ActToGenFrameConverter
+  // ResolvedAccelerationController. robotのddqの値として指令関節加速度が入る
   // WrenchDistributor. robotのuの値として指令関節トルクが入る
 
 public:
@@ -172,30 +193,31 @@ public:
     actRobotRaw->calcForwardKinematics(); actRobotRaw->calcCenterOfMass();
   }
 
-  // startAutoBalancer時に呼ばれる
-  void reset(){
-    for(int i=0;i<
+  void onExecute(double dt){ // onExecuteで毎周期呼ばれる. 内部の補間器をdtすすめる
+    robot->onExecute();
+    for(int i=0;i<objects.size();i++) objects[i]->onExecute();
+    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it.second->onExecute();
+    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it.second->onExecute();
 
-    for(int i=0;i<NUM_LEGS;i++){
-      copOffset[i].reset(copOffset[i].getGoal());
-      defaultTranslatePos[i].reset(defaultTranslatePos[i].getGoal());
-      isManualControlMode[i].reset(isManualControlMode[i].getGoal());
-    }
-
-    // 現在の支持脚からの..という性質のportなので、リセットする必要がある
-    steppableRegion.clear();
-    steppableHeight.clear();
-    relLandingHeight = -1e15;
-    relLandingNormal = cnoid::Vector3::UnitZ();
+    for(int i=0;i<softMaxTorque.size();i++) softMaxTorque[i].reset(softMaxTorque[i].getGoal());
   }
 
-  // 毎周期呼ばれる. 内部の補間器をdtだけ進める
-  void update(double dt){
-    for(int i=0;i<NUM_LEGS;i++){
-      copOffset[i].interpolate(dt);
-      defaultTranslatePos[i].interpolate(dt);
-      isManualControlMode[i].interpolate(dt);
-    }
+  // startAutoBalancer時に呼ばれる
+  void onStartAutoBalancer(){
+    robot->onStartAutoBalancer();
+    for(int i=0;i<objects.size();i++) objects[i]->onStartAutoBalancer();
+    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it.second->onStartAutoBalancer();
+    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it.second->onStartAutoBalancer();
+
+  }
+
+  // startStabilizer時に呼ばれる
+  void onStartStabilizer(){
+    robot->onStartStabilizer();
+    for(int i=0;i<objects.size();i++) objects[i]->onStartStabilizer();
+    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it.second->onStartStabilizer();
+    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it.second->onStartStabilizer();
+
   }
 
 public:
@@ -212,37 +234,6 @@ public:
 };
 
 // for debug
-
-inline std::ostream &operator<<(std::ostream &os, const std::vector<GaitParam::FootStepNodes>& footstepNodesList) {
-  for(int i=0;i<footstepNodesList.size();i++){
-    os << "footstep" << i << std::endl;
-    os << " RLEG: " << std::endl;
-    os << "  pos: " << (footstepNodesList[i].dstCoords[RLEG].translation()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", " [", "]")) << std::endl;
-    os << "  rot: " << (footstepNodesList[i].dstCoords[RLEG].linear()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", "", " [", "]")) << std::endl;
-    os << "  height = " << footstepNodesList[i].stepHeight[RLEG][0] << " " << footstepNodesList[i].stepHeight[RLEG][1] << std::endl;
-    os << "  goaloffset = " << footstepNodesList[i].goalOffset[RLEG] << std::endl;
-    os << " LLEG: " << std::endl;
-    os << "  pos: " << (footstepNodesList[i].dstCoords[LLEG].translation()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", " [", "]")) << std::endl;
-    os << "  rot: " << (footstepNodesList[i].dstCoords[LLEG].linear()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", "", " [", "]")) << std::endl;
-    os << "  height = " << footstepNodesList[i].stepHeight[LLEG][0] << " " << footstepNodesList[i].stepHeight[LLEG][1] << std::endl;
-    os << "  goaloffset = " << footstepNodesList[i].goalOffset[LLEG] << std::endl;
-    os << " time = " << footstepNodesList[i].remainTime << "[s]" << std::endl;;
-  }
-  return os;
-};
-
-inline std::ostream &operator<<(std::ostream &os, const GaitParam& gaitParam) {
-  os << "current" << std::endl;
-  os << " RLEG: " << std::endl;
-  os << "  pos: " << (gaitParam.genCoords[RLEG].value().translation()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", " [", "]")) << std::endl;
-  os << "  rot: " << (gaitParam.genCoords[RLEG].value().linear()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", "", " [", "]")) << std::endl;
-  os << " LLEG: " << std::endl;
-  os << "  pos: " << (gaitParam.genCoords[LLEG].value().translation()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", " [", "]")) << std::endl;
-  os << "  rot: " << (gaitParam.genCoords[LLEG].value().linear()).format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", "", " [", "]")) << std::endl;
-  os << gaitParam.footstepNodesList << std::endl;
-  return os;
-};
-
 inline std::ostream &operator<<(std::ostream &os, const std::vector<cnoid::Vector3>& polygon){
   for(int j=0;j<polygon.size();j++){
     os << polygon[j].format(Eigen::IOFormat(Eigen::StreamPrecision, 0, ", ", ", ", "", "", " [", "]"));
