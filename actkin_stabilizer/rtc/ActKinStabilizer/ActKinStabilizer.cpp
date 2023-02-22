@@ -87,7 +87,9 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
       cnoid::LinkPtr joint = this->gaitParam_.genRobot->joint(i);
       double climit = 0.0, gearRatio = 0.0, torqueConst = 0.0;
       joint->info()->read("climit",climit); joint->info()->read("gearRatio",gearRatio); joint->info()->read("torqueConst",torqueConst);
-      this->gaitParam_.maxTorque[i] = std::max(climit * gearRatio * torqueConst, 0.0);
+      double maxTorque = std::max(climit * gearRatio * torqueConst, 0.0)
+      this->gaitParam_.maxTorque[i] = maxTorque;
+      this->gaitParam_.softMaxTorque[i].reset(maxTorque);
     }
     std::string jointLimitTableStr; this->getProperty("joint_limit_table",jointLimitTableStr);
     {
@@ -117,6 +119,75 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     }
   }
 
+  {
+    // setup default tasks.
+    //   contactとattentionの初期値として、パラメータend_effectorsを用いる. 無くても良い. (あれば)0,1番目がcontactになり、それ以外がattentionになる. contactが1つ以上あれば、cogとrootもattentionとして加える.
+    std::string endEffectors; this->getProperty("end_effectors", endEffectors);
+    std::stringstream ss_endEffectors(endEffectors);
+    std::string buf;
+    int idx = 0;
+    while(std::getline(ss_endEffectors, buf, ',')){
+      std::string name;
+      std::string parentLink;
+      cnoid::Vector3 localp;
+      cnoid::Vector3 localaxis;
+      double localangle;
+
+      //   name, parentLink, (not used), x, y, z, theta, ax, ay, az
+      name = buf;
+      if(!std::getline(ss_endEffectors, buf, ',')) break; parentLink = buf;
+      if(!std::getline(ss_endEffectors, buf, ',')) break; // not used
+      if(!std::getline(ss_endEffectors, buf, ',')) break; localp[0] = std::stod(buf);
+      if(!std::getline(ss_endEffectors, buf, ',')) break; localp[1] = std::stod(buf);
+      if(!std::getline(ss_endEffectors, buf, ',')) break; localp[2] = std::stod(buf);
+      if(!std::getline(ss_endEffectors, buf, ',')) break; localaxis[0] = std::stod(buf);
+      if(!std::getline(ss_endEffectors, buf, ',')) break; localaxis[1] = std::stod(buf);
+      if(!std::getline(ss_endEffectors, buf, ',')) break; localaxis[2] = std::stod(buf);
+      if(!std::getline(ss_endEffectors, buf, ',')) break; localangle = std::stod(buf);
+
+      // check validity
+      name.erase(std::remove(name.begin(), name.end(), ' '), name.end()); // remove whitespace
+      parentLink.erase(std::remove(parentLink.begin(), parentLink.end(), ' '), parentLink.end()); // remove whitespace
+      if(!this->gaitParam_.robot->body->link(parentLink)){
+        std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << " link [" << parentLink << "]" << " is not found for " << name << "\x1b[39m" << std::endl;
+        return RTC::RTC_ERROR;
+      }
+      cnoid::Matrix3 localR;
+      if(localaxis.norm() == 0) localR = cnoid::Matrix3::Identity();
+      else localR = Eigen::AngleAxisd(localangle, localaxis.normalized()).toRotationMatrix();
+      cnoid::Position localT;
+      localT.translation() = localp;
+      localT.linear() = localR;
+
+      if(idx<2){
+        std::shared_ptr<Contact> contact;
+        contact->name = name;
+        contact->link1 = this->gaitParam_.robot->body->link(parentLink);
+        contact->localPose1 = localT;
+        this->gaitParam_.contacts[name] = contact;
+      }else{
+        std::shared_ptr<Attention> attention;
+        attention->name = name;
+        attention->link1 = this->gaitParam_.robot->body->link(parentLink);
+        attention->localPose1.reset(localT);
+        this->gaitParam_.attentions[name] = attention;
+      }
+      idx++;
+    }
+
+    if(idx>0){
+      {
+        // cog
+        std::shared_ptr<Attention> attention;
+        attention->name = "cog";
+        attention->cog2 = this->gaitParam_.robot->body;
+        attention->localPose1.reset(localT);
+        this->gaitParam_.attentions[name] = attention;
+      }
+      // root
+    }
+
+  }
 
   // init Stabilizer
   this->stabilizer_.init(this->gaitParam_, this->gaitParam_.actRobotTqc, this->gaitParam_.actRobot);
@@ -699,26 +770,42 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   }
   double dt = 1.0 / rate;
 
+  // 内部の補間器をdtだけ進める
+  this->mode_.update(dt);
+  this->gaitParam_.onExecute(dt);
+  this->actToGenFrameConverter_.onExecute(this->dt_);
+  this->resolvedAccelerationController_.onExecute(this->dt_);
+  this->wrenchDistributor_.onExecute(this->dt_);
+
+
   if(!ActKinStabilizer::readInPortData(this->dt_, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.selfCollision, this->gaitParam_.steppableRegion, this->gaitParam_.steppableHeight, this->gaitParam_.relLandingHeight, this->gaitParam_.relLandingNormal)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
 
-  // 内部補間器を進める
-  this->mode_.update(this->dt_);
-  this->gaitParam_.update(this->dt_);
-  this->refToGenFrameConverter_.update(this->dt_);
-  this->stabilizer_.update(this->dt_);
 
-  if(this->mode_.isSTRunning()) {
-    if(this->mode_.isSyncToSTInit()){ // startStabilizer直後の初回. 内部パラメータのリセット
-      this->gaitParam_.reset();
-      this->refToGenFrameConverter_.reset();
-      this->actToGenFrameConverter_.reset();
-      this->externalForceHandler_.reset();
-      this->footStepGenerator_.reset();
-      this->impedanceController_.reset();
-      this->legCoordsGenerator_.reset();
-      this->stabilizer_.reset();
+  if(this->mode_.isABCRunning()) {
+    if(mode.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
+      this->gaitParam.onStartAutoBalancer();
+      this->actToGenFrameConverter_.onStartAutoBalancer();
     }
-    ActKinStabilizer::execActKinStabilizer(this->mode_, this->gaitParam_, this->dt_, this->footStepGenerator_, this->legCoordsGenerator_, this->refToGenFrameConverter_, this->actToGenFrameConverter_, this->impedanceController_, this->stabilizer_,this->externalForceHandler_, this->legManualController_, this->cmdVelGenerator_);
+
+    // robotとobjectsの位置姿勢と速度を更新する. actRobotRawとcontactsを用いて
+    this->actToGenFrameConverter_.convertFrame(this->gaitParam_, dt, // input
+                                               this->gaitParam_.robot, this->gaitParam_.activeObjects); // input & output
+
+    if(mode.isSTRunning()){
+      if(this->mode_.isSyncToSTInit()){ // startStabilizer直後の初回. 内部パラメータのリセット
+        this->gaitParam.onStartStabilizer();
+        this->resolvedAccelerationController_.onStartStabilizer();
+        this->wrenchDistributor_.onStartStabilizer();
+      }
+
+      // contactsとattentionsを満たすようにrobotとobjectsの目標加速度を求める
+      this->resolvedAccelerationController_.solve(this->gaitParam_, dt,
+                                                  this->gaitParam_.robot, this->gaitParam_.activeObjects);
+
+      // contactsに接触力を分配し、robotの目標関節トルクを求める
+      this->wrenchDistributor_.solve(this->gaitParam_, dt,
+                                     this->gaitParam_.robot);
+    }
   }
 
   ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, this->dt_, this->gaitParam_, this->outputRootPoseFilter_, this->outputJointAngleFilter_);

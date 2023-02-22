@@ -1,4 +1,4 @@
-#include "Stabilizer.h"
+#include "WrenchDistributor.h"
 #include "MathUtil.h"
 #include <cnoid/Jacobian>
 #include <cnoid/EigenUtil>

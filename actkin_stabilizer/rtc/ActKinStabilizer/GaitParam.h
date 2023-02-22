@@ -4,6 +4,7 @@
 #include <sys/time.h>
 #include <cnoid/EigenTypes>
 #include <vector>
+#include <unordered_map>
 #include <limits>
 #include <cpp_filters/TwoPointInterpolator.h>
 #include <cpp_filters/FirstOrderLowPassFilter.h>
@@ -16,13 +17,13 @@ public:
 
   // ActToGenFrameConverter
   std::vector<cpp_filters::FirstOrderLowPassFilter<double> > dqAct; // これを使ってfilterした後の値がbody->link->dq()に入る. cutoffを2loopぶんにするために、passFilterのdtは常に1/2[s], cutOffは1[Hz]とする.
-  cpp_filters::FirstOrderLowPassFilter<cnoid::Vector6> actRootVel(3.5, cnoid::Vector6::Zero()); // generate frame. 現在のroot速度. rootLink origin. なんとなくactCogVelと同程度のhzにしておく. これを使ってfilterした後の値がactRobot->rootLink()->v()/w()に入る
-  cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> actCogVel(3.5, cnoid::Vector3::Zero()); // generate frame.  現在のCOM速度. cutoff=4.0Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ
+  cpp_filters::FirstOrderLowPassFilter<cnoid::Vector6> actRootVel{3.5, cnoid::Vector6::Zero()}; // generate frame. 現在のroot速度. rootLink origin. なんとなくactCogVelと同程度のhzにしておく. これを使ってfilterした後の値がactRobot->rootLink()->v()/w()に入る
+  cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> actCogVel{3.5, cnoid::Vector3::Zero()}; // generate frame.  現在のCOM速度. cutoff=4.0Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ
 
 public:
   Object(cnoid::BodyPtr body_) : // bodyはnullptrであってはならない
-    body(body_)
-    dqAct(body_->numJoints(), cpp_filters::FirstOrderLowPassFilter(1.0, 0.0))
+    body(body_),
+    dqAct(body_->numJoints(), cpp_filters::FirstOrderLowPassFilter<double>(1.0, 0.0))
   {
     body->rootLink()->v().setZero(); body->rootLink()->w().setZero(); body->rootLink()->dv().setZero(); body->rootLink()->dw().setZero();
     for(int i=0;i<body->numJoints();i++){
@@ -46,17 +47,51 @@ class Contact {
 public:
   // from InPort
   std::string name;
-  unsigned long stateId; // 現在のstateId以外のstateIdを伴う指令は無視する
-  cnoid::LinkPtr link1; // nullptrならworld
-  cnoid::Position localPose1; // link1 frame.
-  cnoid::LinkPtr link2; // nullptrならworld
-  cnoid::Vector6 axis; // localPose1 frame/origin. 動かせない&接触力が発生する軸のみtrue
-  Eigen::SparseMatrix<double,Eigen::RowMajor> C(0,0); // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
+  unsigned long stateId{0}; // 現在のstateId以外のstateIdを伴う指令は無視する
+  cnoid::LinkPtr link1{nullptr}; // nullptrならworld
+  cnoid::Position localPose1{cnoid::Position::Identity()}; // link1 frame.
+  cnoid::LinkPtr link2{nullptr}; // nullptrならworld
+  Eigen::SparseMatrix<double,Eigen::RowMajor> S; // localPose1 frame/origin. 動かせない&接触力が発生する軸のみ抽出するselect matrix
+  Eigen::SparseMatrix<double,Eigen::RowMajor> C; // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
   cnoid::VectorX ld;
   cnoid::VectorX ud;
   cnoid::VectorX w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
 
 public:
+  Contact(){
+    // とりあえず足裏のようなsurface contactで初期化
+
+    S.resize(6,6);
+    S.setIdentity();
+
+    // 50<  0  0  1  0  0  0 < 1e10
+    // 0 <  1  0 mt  0  0  0 < 1e10
+    // 0 < -1  0 mt  0  0  0 < 1e10
+    // 0 <  0  1 mt  0  0  0 < 1e10
+    // 0 <  0 -1 mt  0  0  0 < 1e10
+    // 0 <  0  0 xu  0  1  0 < 1e10
+    // 0 <  0  0-xl  0 -1  0 < 1e10
+    // 0 <  0  0 yu -1  0  0 < 1e10
+    // 0 <  0  0-yl  1  0  0 < 1e10
+    // 0 <  0  0 mr  0  0  1 < 1e10
+    // 0 <  0  0 mr  0  0 -1 < 1e10
+    const double mt=0.5, mr=0.05, xu=0.115, xl=-0.095, yu=0.065, yl=-0.065;
+    ld.resize(11); C.resize(11,6); ud.resize(11);
+    ld[0] = 50.0; C.insert(0,2) = 1.0; ud[0] = 1e10;
+    ld[1] = 0.0; C.insert(1,0) = 1.0; C.insert(1,2) = mt; ud[1] = 1e10;
+    ld[2] = 0.0; C.insert(2,0) = -1.0; C.insert(2,2) = mt; ud[2] = 1e10;
+    ld[3] = 0.0; C.insert(3,1) = 1.0; C.insert(3,2) = mt; ud[3] = 1e10;
+    ld[4] = 0.0; C.insert(4,1) = -1.0; C.insert(4,2) = mt; ud[4] = 1e10;
+    ld[5] = 0.0; C.insert(5,2) = xu; C.insert(5,4) = 1.0; ud[5] = 1e10;
+    ld[6] = 0.0; C.insert(6,2) = -xl; C.insert(6,4) = -1.0; ud[6] = 1e10;
+    ld[7] = 0.0; C.insert(7,2) = yu; C.insert(7,3) = -1.0; ud[7] = 1e10;
+    ld[8] = 0.0; C.insert(8,2) = -yl; C.insert(8,3) = 1.0; ud[8] = 1e10;
+    ld[9] = 0.0; C.insert(9,0) = mr; C.insert(9,5) = 1.0; ud[9] = 1e10;
+    ld[10] = 0.0; C.insert(10,0) = mr; C.insert(10,5) = -1.0; ud[10] = 1e10;
+
+    w.resize(6);
+    w << 1e2, 1e2, 1e0, 1e2, 1e2, 1e3;
+  }
   void onExecute(double dt){
   }
   void onStartAutoBalancer(){
@@ -74,43 +109,50 @@ class Attention {
 public:
   // from Inport
   std::string name;
-  unsigned long stateId; // 現在のstateId以外のstateIdを伴う指令は無視する
-  cnoid::BodyPtr cog1; // 非nullptrならcog
-  cnoid::LinkPtr link1; // nullptrならworld
-  cpp_filters::TwoPointInterpolatorSE3 localPose1(cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB); // link1 frame
-  cpp_filters::TwoPointInterpolator<cnoid::Vector6> refWrench(cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB); // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
-  cnoid::BodyPtr cog2; // 非nullptrならcog
-  cnoid::LinkPtr link2; // nullptrならworld
-  cpp_filters::TwoPointInterpolatorSE3 localPose2(cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB); // link2 frame
-  Eigen::SparseMatrix<double,Eigen::RowMajor> Cp(0,6); // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
-  cnoid::VectorX ldp;
-  cnoid::VectorX udp;
-  cnoid::VectorX Kp; // - Kp * (Cp * 位置姿勢 - ldp|udp) を、分解加速度制御の目標加速度として使う
-  cnoid::VectorX Dp; // - Dp * Cp * 速度 を、分解加速度制御の目標加速度として使う
-  cnoid::VectorX limitp; // (Cp * 位置姿勢 - ldp|udp)に対するlimit
+  unsigned long stateId{0}; // 現在のstateId以外のstateIdを伴う指令は無視する
+  cnoid::BodyPtr cog1{nullptr}; // 非nullptrならcog
+  cnoid::LinkPtr link1{nullptr}; // nullptrならworld
+  cpp_filters::TwoPointInterpolatorSE3 localPose1{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // link1 frame
+  cpp_filters::TwoPointInterpolator<cnoid::Vector6> refWrench{cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
+  cnoid::BodyPtr cog2{nullptr}; // 非nullptrならcog
+  cnoid::LinkPtr link2{nullptr}; // nullptrならworld
+  cpp_filters::TwoPointInterpolatorSE3 localPose2{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // link2 frame
+  Eigen::SparseMatrix<double,Eigen::RowMajor> C; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
+  cnoid::VectorX ld;
+  cnoid::VectorX ud;
+  cnoid::VectorX Kp; // - Kp * (C * 位置姿勢 - ld|ud) を、分解加速度制御の目標加速度として使う
+  cnoid::VectorX Dp; // - Dp * C * 速度 を、分解加速度制御の目標加速度として使う
+  cnoid::VectorX limitp; // Kp * (C * 位置姿勢 - ld|ud)に対するlimit
   cnoid::VectorX weightp; // 分解加速度制御の重み. default1.0
-  long priority; // 分解加速度制御の優先度. 大きいほど高優先度
-  double horizon; // [s]. 0より大きいなら、MPCになる.(world-重心のみ可)
-  Eigen::SparseMatrix<double,Eigen::RowMajor> Cw(0,6); // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
-  cnoid::VectorX ldw;
-  cnoid::VectorX udw;
-  cnoid::VectorX Kw; // - Kw * (Cw * 位置姿勢 - ldw|udw) を、目標反力として使う
-  cnoid::VectorX Dw; // - Dw * Cw * 速度 を、目標反力として使う
-  cnoid::VectorX limitw; // (Cw * 位置姿勢 - ldw|udw)に対するlimit
+  long priority{0}; // 分解加速度制御の優先度. 大きいほど高優先度
+  double horizon{0.0}; // [s]. 0より大きいなら、MPCになる.(world-重心のみ可)
+  cnoid::VectorX Kw; // - Kw * (C * 位置姿勢 - ld|ud) を、目標反力として使う
+  cnoid::VectorX Dw; // - Dw * C * 速度 を、目標反力として使う
+  cnoid::VectorX limitw; // Kw * (Cw * 位置姿勢 - ldw|udw)に対するlimit
   // 重心の場合、回転成分は無視する. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
 
 public:
+  Attention(){
+    // とりあえず6軸拘束で初期化
+    C.resize(6,6); C.setIdentity(); ld.resize(6); ld.setZero(); ud.resize(6); ud.setZero();
+    Kp.resize(6); Kp<<50, 50, 50, 20, 20, 20; Kd.resize(6); Kd<<10, 10, 10, 10, 10, 10;
+    limitp.resize(6); limitp<<5.0, 5.0, 5.0, 5.0, 5.0, 5.0; weightp.resize(6); weightp<<1.0,1.0,1.0,1.0,1.0,1.0;
+    Kw.resize(6); Kw.setZero(); Kw.resize(6); Kw.setZero();
+    limitw.resize(6); limitw.setZero();
+  }
   void onExecute(double dt){
     this->localPose1.interpolate(dt);
     this->localPose2.interpolate(dt);
     this->refWrench.interpolate(dt);
   }
   void goActual(bool clearWrench=false){
+    // localPose2を, Cを満たすように修正する.
+    // TODO. QPを使う.
     cnoid::Position pose1 = link1 ? link1->T() * localPose1.value() : localPose1.value();
     this->localPose2.reset(link2 ? link2->T().inverse() * pose1 : pose1);
     if(clearWrench) this->refWrench.reset(cnoid::Vector6::Zero());
   }
-  void onStartAutoBalancer(bool clearWrench=false){
+  void onStartAutoBalancer(){
   }
   void onStartStabilizer(){
     this->goActual();
@@ -139,9 +181,9 @@ public:
   cnoid::BodyPtr actRobotRaw; // actual. actual imu world frame
   class Collision {
   public:
-    std::LinkPtr link1; // world model
+    cnoid::LinkPtr link1; // world model
     cnoid::Vector3 point1 = cnoid::Vector3::Zero(); // link1 frame
-    std::LinkPtr link2; // world model
+    cnoid::LinkPtr link2; // world model
     cnoid::Vector3 point2 = cnoid::Vector3::Zero(); // link2 frame
     cnoid::Vector3 direction21 = cnoid::Vector3::UnitX(); // generate frame
     double distance = 0.0;
@@ -182,7 +224,7 @@ public:
   void init(const cnoid::BodyPtr& robot_){
     maxTorque.resize(robot_->numJoints(), std::numeric_limits<double>::max());
     jointLimitTables.resize(robot_->numJoints());
-    softMaxTorque.resize(robot_->numJoints(), std::numeric_limits<double>::max());
+    softMaxTorque.resize(robot_->numJoints(), cpp_filters::TwoPointInterpolator<double>(std::numeric_limits<double>::max(),0.0,0.0,cpp_filters::HOFFARBIB));
     jointControllable.resize(robot_->numJoints(), true);
 
     robot = std::make_shared<Object>(robot_);
@@ -194,10 +236,10 @@ public:
   }
 
   void onExecute(double dt){ // onExecuteで毎周期呼ばれる. 内部の補間器をdtすすめる
-    robot->onExecute();
-    for(int i=0;i<objects.size();i++) objects[i]->onExecute();
-    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it.second->onExecute();
-    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it.second->onExecute();
+    robot->onExecute(dt);
+    for(std::unordered_map<std::string, std::shared_ptr<Object> >::iterator it=objects.begin();it!=objects.end();it++) it->second->onExecute(dt);
+    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it->second->onExecute(dt);
+    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it->second->onExecute(dt);
 
     for(int i=0;i<softMaxTorque.size();i++) softMaxTorque[i].reset(softMaxTorque[i].getGoal());
   }
@@ -205,18 +247,18 @@ public:
   // startAutoBalancer時に呼ばれる
   void onStartAutoBalancer(){
     robot->onStartAutoBalancer();
-    for(int i=0;i<objects.size();i++) objects[i]->onStartAutoBalancer();
-    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it.second->onStartAutoBalancer();
-    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it.second->onStartAutoBalancer();
+    for(std::unordered_map<std::string, std::shared_ptr<Object> >::iterator it=objects.begin();it!=objects.end();it++) it->second->onStartAutoBalancer();
+    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it->second->onStartAutoBalancer();
+    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it->second->onStartAutoBalancer();
 
   }
 
   // startStabilizer時に呼ばれる
   void onStartStabilizer(){
     robot->onStartStabilizer();
-    for(int i=0;i<objects.size();i++) objects[i]->onStartStabilizer();
-    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it.second->onStartStabilizer();
-    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it.second->onStartStabilizer();
+    for(std::unordered_map<std::string, std::shared_ptr<Object> >::iterator it=objects.begin();it!=objects.end();it++) it->second->onStartStabilizer();
+    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it=contacts.begin();it!=contacts.end();it++) it->second->onStartStabilizer();
+    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it=attentions.begin();it!=attentions.end();it++) it->second->onStartStabilizer();
 
   }
 

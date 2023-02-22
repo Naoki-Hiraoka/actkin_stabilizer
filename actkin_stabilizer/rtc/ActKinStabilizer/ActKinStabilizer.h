@@ -2,7 +2,6 @@
 #define ActKinStabilizer_H
 
 #include <memory>
-#include <map>
 #include <time.h>
 #include <mutex>
 
@@ -94,29 +93,27 @@ protected:
   class ControlMode{
   public:
     /*
-      MODE_IDLE -> startAutoBalancer() -> MODE_SYNC_TO_ABC(odomの初期化) -> MODE_ABC
+      MODE_IDLE -> startAutoBalancer() -> MODE_SYNC_TO_ABC -> MODE_ABC
       MODE_ABC -> stopAutoBalancer() -> MODE_SYNC_TO_IDLE -> MODE_IDLE
 
-      MODE_ABC or MODE_EMG (各タスクは常にactualで上書きされる) -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST
-      MODE_ST(指令関節角度は常にactualで上書きされる) -> stopStabilizer() -> MODE_SYNC_TO_EMG -> MODE_EMG (指令関節角度は常に動かない)
-
-      MODE_EMG (指令関節角度は常に動かない) -> releaseEmergencyStop() -> MODE_SYMC_TO_RELEASE_EMG -> MODE_ABC
+      MODE_ABC -> startStabilizer() -> MODE_SYNC_TO_ST -> MODE_ST
+      MODE_ST -> stopStabilizer() -> MODE_SYNC_TO_STOPST -> MODE_ABC
 
       MODE_SYNC_TO*の時間はtransition_timeの時間をかけて遷移するが、少なくとも1周期はMODE_SYNC_TO*を経由する.
       MODE_SYNC_TO*では、基本的に次のMODEと同じ処理が行われるが、出力時に前回のMODEの出力から補間するような軌道に加工されることで出力の連続性を確保する
       補間している途中で別のmodeに切り替わることは無いので、そこは安心してプログラムを書いてよい(例外はonActivated). 同様に、remainTimeが突然減ったり増えたりすることもない
 
-      MODE_ABC: 位置制御. 出力する指令関節角度は変化しない
-      MODE_ST: トルク制御. 出力する指令関節角度はactualの値で更新する.
+      MODE_ABC: contactに基づきhrpsys_odom座標系を更新する
+      MODE_ST: トルク制御指令値を求める
      */
-    enum Mode_enum{ MODE_IDLE, MODE_SYNC_TO_ST, MODE_ST, MODE_SYNC_TO_IDLE};
-    enum Transition_enum{ START_ST, STOP_ST};
-    double st_start_transition_time, st_stop_transition_time;
+    enum Mode_enum{ MODE_IDLE, MODE_SYNC_TO_ABC, MODE_ABC, MODE_SYNC_TO_ST, MODE_ST, MODE_SYNC_TO_STOPST, MODE_SYNC_TO_IDLE};
+    enum Transition_enum{ START_ABC, STOP_ABC, START_ST, STOP_ST};
+    double abc_start_transition_time, abc_stop_transition_time, st_start_transition_time, st_stop_transition_time;
   private:
     Mode_enum current, previous, next;
-    cpp_filters::TwoPointInterpolator<double> transitionInterpolator = cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::LINEAR); // 0 -> 1
+    cpp_filters::TwoPointInterpolator<double> transitionInterpolator = cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::LINEAR); // SYNC_TO状態のとき、0 -> 1. SYNC_TO以外のとき、常に1
   public:
-    ControlMode(){ reset(); abc_start_transition_time = 0.5; abc_stop_transition_time = 2.0; st_start_transition_time = 0.5; st_stop_transition_time = 0.5; release_emergency_transition_time = 2.0;}
+    ControlMode(){ reset(); abc_start_transition_time = 0.5; abc_stop_transition_time = 2.0; st_start_transition_time = 0.5; st_stop_transition_time = 0.5;}
     void reset(){ current = previous = next = MODE_IDLE; transitionInterpolator.reset(1.0);}
     bool setNextTransition(const Transition_enum request){
       switch(request){
@@ -128,8 +125,6 @@ protected:
         if(current == MODE_ABC){ next = MODE_SYNC_TO_ST; return true; }else{ return false; }
       case STOP_ST:
         if(current == MODE_ST){ next = MODE_SYNC_TO_EMG; return true; }else{ return false; }
-      case RELEASE_EMG:
-        if(current == MODE_EMG){ next = MODE_SYNC_TO_RELEASE_EMG; return true; }else{ return false; }
       default:
         return false;
       }
@@ -150,9 +145,6 @@ protected:
         case MODE_SYNC_TO_EMG:
           transitionInterpolator.reset(0.0);
           transitionInterpolator.setGoal(1.0, st_stop_transition_time); break;
-        case MODE_SYNC_TO_RELEASE_EMG:
-          transitionInterpolator.reset(0.0);
-          transitionInterpolator.setGoal(1.0, release_emergency_transition_time); break;
         default:
           break;
         }
@@ -167,8 +159,6 @@ protected:
             current = next = MODE_IDLE; break;
           case MODE_SYNC_TO_ST:
             current = next = MODE_ST; break;
-          case MODE_SYNC_TO_EMG:
-            current = next = MODE_EMG; break;
           case MODE_SYNC_TO_RELEASE_EMG:
             current = next = MODE_ABC; break;
           default:
@@ -181,21 +171,16 @@ protected:
     double transitionRatio() const{ return transitionInterpolator.value();}
     Mode_enum now() const{ return current; }
     Mode_enum pre() const{ return previous; }
-    bool isABCRunning() const{ return (current==MODE_SYNC_TO_ABC) || (current==MODE_ABC) || (current==MODE_SYNC_TO_ST) || (current==MODE_ST) || (current==MODE_SYNC_TO_EMG) || (current==MODE_EMG) || (current==MODE_SYNC_TO_RELEASE_EMG) ;}
-    bool isSyncToABC() const{ return current==MODE_SYNC_TO_ABC;}
-    bool isSyncToABCInit() const{ return (current != previous) && isSyncToABC();}
-    bool isSyncToIdle() const{ return current==MODE_SYNC_TO_IDLE;}
-    bool isSyncToIdleInit() const{ return (current != previous) && isSyncToIdle();}
-    bool isSyncToST() const{ return current == MODE_SYNC_TO_ST;}
-    bool isSyncToSTInit() const{ return (current != previous) && isSyncToST();}
-    bool isSyncToStopST() const{ return current == MODE_SYNC_TO_EMG;}
-    bool isSyncToStopSTInit() const{ return (current != previous) && isSyncToStopST();}
+    bool isABCRunning() const{ return (current==MODE_SYNC_TO_ABC) || (current==MODE_ABC) || (current==MODE_SYNC_TO_ST) || (current==MODE_ST) || (current==MODE_SYNC_TO_STOPST) ;}
+    bool isSyncToABCInit() const{ return (current != previous) && (current==MODE_SYNC_TO_ABC);}
+    bool isSyncToIdleInit() const{ return (current != previous) && (current==MODE_SYNC_TO_IDLE);}
+    bool isSyncToSTInit() const{ return (current != previous) && (current==MODE_SYNC_TO_ST);}
+    bool isSyncToStopSTInit() const{ return (current != previous) && (current==MODE_SYNC_TO_STOPST);}
     bool isSTRunning() const{ return (current==MODE_SYNC_TO_ST) || (current==MODE_ST) ;}
   };
   ControlMode mode_;
 
   GaitParam gaitParam_;
-
   ActToGenFrameConverter actToGenFrameConverter_;
   ResolvedAccelerationController resolvedAccelerationController_;
   WrenchDistributor wrenchDistributor_;

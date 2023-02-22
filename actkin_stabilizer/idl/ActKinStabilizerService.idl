@@ -11,8 +11,8 @@ module actkin_stabilizer
     sequence<double, 6> acceleration; // parent frame. local origin.
     double time; // time from prev [s]
   };
-  struct WrenchPointIdl{
-    sequence<double, 6> wrench; // parent frame. local origin.
+  struct VectorPointIdl{
+    sequence<double> vector; // parent frame. local origin.
     double time; // time from prev [s]
   };
 
@@ -46,25 +46,23 @@ module actkin_stabilizer
     // obj==[obj名], link=="CM": objectの重心
     string obj1;
     string link1;
-    RTC::Pose3D initLocalPose1; // link1 frame
-    sequence<double, 6> initRefWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
+    RTC::Pose3D localPose1; // link1 frame
+    RTC::Pose3D localPose2; // link2 frame. goActualで修正される
+    sequence<double, 6> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
     string obj2;
     string link2;
-    sequence<sequence<double, 6> > Cp; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
-    sequence<double> ldp;
-    sequence<double> udp;
-    sequence<double> Kp; // - Kp * (Cp * 位置姿勢 - ldp|udp) を、分解加速度制御の目標加速度として使う
-    sequence<double> Dp; // - Dp * Cp * 速度 を、分解加速度制御の目標加速度として使う
-    sequence<double> limitp; // (Cp * 位置姿勢 - ldp|udp)に対するlimit
+    sequence<sequence<double, 6> > C; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
+    sequence<double> ld;
+    sequence<double> ud;
+    sequence<double> Kp; // - Kp * (C * 位置姿勢 - ld|ud) を、分解加速度制御の目標加速度として使う
+    sequence<double> Dp; // - Dp * C * 速度 を、分解加速度制御の目標加速度として使う
+    sequence<double> limitp; // Kp * (Cp * 位置姿勢 - ldp|udp)に対するlimit
     sequence<double> weightp; // 分解加速度制御の重み. default1.0
     long priority; // 分解加速度制御の優先度. 大きいほど高優先度
     double horizon; // [s]. 0より大きいなら、MPCになる.(world-重心のみ可)
-    sequence<sequence<double, 6> > Cw; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
-    sequence<double> ldw;
-    sequence<double> udw;
-    sequence<double> Kw; // - Kw * (Cw * 位置姿勢 - ldw|udw) を、目標反力として使う
-    sequence<double> Dw; // - Dw * Cw * 速度 を、目標反力として使う
-    sequence<double> limitw; // (Cw * 位置姿勢 - ldw|udw)に対するlimit
+    sequence<double> Kw; // - Kw * (C * 位置姿勢 - ld|ud) を、目標反力として使う
+    sequence<double> Dw; // - Dw * C * 速度 を、目標反力として使う
+    sequence<double> limitw; // Kw * (C * 位置姿勢 - ld|ud)に対するlimit
     // 重心の場合、回転成分は無視する. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
   };
 
@@ -73,7 +71,9 @@ module actkin_stabilizer
     unsigned long id; // 現在のstateId以外のstateIdを伴う指令は無視する
     sequence<PosePointIdl> localPose1; // link1 frame.
     sequence<PosePointIdl> localPose2; // link2 frame.
-    sequence<WrenchPointIdl> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
+    sequence<VectorPointIdl> ld; // サイズはld,udと同じ
+    sequence<VectorPointIdl> ud;
+    sequence<VectorPointIdl> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
   };
 
   struct PrimitiveStateIdl{
@@ -100,6 +100,8 @@ module actkin_stabilizer
 
   interface ActKinStabilizerService
   {
+    boolean startAutoBalancer();
+    boolean stopAutoBalancer();
     boolean startStabilizer();
     boolean stopStabilizer();
 

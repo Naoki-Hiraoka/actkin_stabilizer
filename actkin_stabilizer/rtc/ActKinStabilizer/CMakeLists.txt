@@ -36,15 +36,9 @@ link_directories(
 add_library(ActKinStabilizer SHARED
   ActKinStabilizer.cpp
   ActKinStabilizerService_impl.cpp
-  LegCoordsGenerator.cpp
-  FootStepGenerator.cpp
-  RefToGenFrameConverter.cpp
   ActToGenFrameConverter.cpp
-  ExternalForceHandler.cpp
-  Stabilizer.cpp
-  ImpedanceController.cpp
-  LegManualController.cpp
-  CmdVelGenerator.cpp
+  ResolvedAccelerationController.cpp
+  WrenchDistributor.cpp
   MathUtil.cpp
   )
 target_link_libraries(ActKinStabilizer

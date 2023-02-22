@@ -13,25 +13,22 @@ class ActKinStabilizerService_impl
 public:
   ActKinStabilizerService_impl();// 実装は.cppファイルの方に書かないと、registerProvider時にSegmentation Faultになる
   ~ActKinStabilizerService_impl();
-  CORBA::Boolean goPos( CORBA::Double x,  CORBA::Double y,  CORBA::Double th);
-  CORBA::Boolean goVelocity( CORBA::Double vx,  CORBA::Double vy,  CORBA::Double vth);
-  CORBA::Boolean goStop();
-  CORBA::Boolean jumpTo( CORBA::Double x,  CORBA::Double y,  CORBA::Double z,  CORBA::Double ts,  CORBA::Double tf);
-  CORBA::Boolean setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs);
-  CORBA::Boolean setFootStepsWithParam(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs, const actkin_stabilizer::ActKinStabilizerService::StepParamSequence& spss);
-  void waitFootSteps();
   CORBA::Boolean startAutoBalancer();
   CORBA::Boolean stopAutoBalancer();
-  CORBA::Boolean startStabilizer(void);
-  CORBA::Boolean stopStabilizer(void);
+  CORBA::Boolean startStabilizer();
+  CORBA::Boolean stopStabilizer();
+  CORBA::Boolean setPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command);
+  CORBA::Boolean getPrimitiveState(actkin_stabilizer::PrimitiveStateIdl_out command);
+  CORBA::Boolean resetPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command);
+  CORBA::Boolean goActual();
+  CORBA::Boolean loadObject(const char *name, const char *file);
+  CORBA::Boolean unloadObject(const char *name);
+  CORBA::Boolean setObjectState(const actkin_stabilizer::ObjectStateIdl& obj);
+  CORBA::Boolean setObjectStates(const actkin_stabilizer::ObjectStateIdlSeq& objs);
+  CORBA::Boolean getObjectStates(actkin_stabilizer::ObjectStateIdlSeq_out objs);
+
   CORBA::Boolean setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
   CORBA::Boolean getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam_out i_param);
-  CORBA::Boolean getFootStepState(actkin_stabilizer::ActKinStabilizerService::FootStepState_out i_param);
-  CORBA::Boolean releaseEmergencyStop();
-  CORBA::Boolean startImpedanceController(const char *i_name_);
-  CORBA::Boolean stopImpedanceController(const char *i_name_);
-  CORBA::Boolean startWholeBodyMasterSlave();
-  CORBA::Boolean stopWholeBodyMasterSlave();
   //
   //
   void setComp(ActKinStabilizer *i_comp);
