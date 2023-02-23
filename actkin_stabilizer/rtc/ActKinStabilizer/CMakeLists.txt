@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   aik_constraint
   aik_constraint_joint_limit_table
   prioritized_acc_inverse_kinematics_solver
+  eigen_rtm_conversions
   )
 find_package(choreonoid REQUIRED)
 

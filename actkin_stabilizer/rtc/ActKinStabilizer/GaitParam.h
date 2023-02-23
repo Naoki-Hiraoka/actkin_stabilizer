@@ -13,6 +13,7 @@
 
 class Object {
 public:
+  std::string name;
   cnoid::BodyPtr body; // nullptrでは無いことが保証されている. rootLinkがFreeJointでなければならない. FixedJointにしたければ、接触力無限のContactを利用せよ
 
   // ActToGenFrameConverter

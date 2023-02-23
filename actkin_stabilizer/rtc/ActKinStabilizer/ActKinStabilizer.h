@@ -90,6 +90,8 @@ protected:
     RTC::OutPort<RTC::TimedPoint3D> m_actBasePosOut_; // for old RTCs
     RTC::TimedOrientation3D m_actBaseRpy_; // Generate World frame
     RTC::OutPort<RTC::TimedOrientation3D> m_actBaseRpyOut_; // for old RTCs
+    actkin_stabilizer::ObjectStateIdlSeq m_objectStates_; // Generate World frame
+    RTC::OutPort<actkin_stabilizer::ObjectStateIdlSeq> m_objectStatesOut_;
 
     ActKinStabilizerService_impl m_service0_;
     RTC::CorbaPort m_ActKinStabilizerServicePort_;
