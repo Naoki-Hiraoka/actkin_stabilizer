@@ -633,6 +633,25 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
         attentions_changed = true;
       }
     }
+    if(attentions_changed){
+      prioritizedAttentions.clear();
+      std::vector<std::shared_ptr<Attention> > tmpAttentions; tmpAttentions.reserve(attentions.size());
+      std::vector<std::shared_ptr<Attention> > nextTmpAttentions; nextTmpAttentions.reserve(attentions.size());
+      for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it = attentions.begin(); it != attentions.end(); it++) tmpAttentions.push_back(it->second);
+      while(tmpAttentions.size() > 0){
+        long maxPriority = std::numeric_limits<long>::min();
+        for(int i=0;i<tmpAttentions.size();i++) {
+          if(tmpAttentions[i]->priority > maxPriority) maxPriority = tmpAttentions[i]->priority;
+        }
+        prioritizedAttentions.emplace_back();
+        nextTmpAttentions.clear();
+        for(int i=0;i<tmpAttentions.size();i++) {
+          if(tmpAttentions[i]->priority == maxPriority) prioritizedAttentions.back().push_back(tmpAttentions[i]);
+          else nextTmpAttentions.push_back(tmpAttentions[i]);
+        }
+        tmpAttentions = nextTmpAttentions;
+      }
+    }
   }
 
   return qRef_updated;
