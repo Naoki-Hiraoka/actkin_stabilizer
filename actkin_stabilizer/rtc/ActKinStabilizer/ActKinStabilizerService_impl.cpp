@@ -38,7 +38,7 @@ CORBA::Boolean ActKinStabilizerService_impl::setPrimitiveState(const actkin_stab
 CORBA::Boolean ActKinStabilizerService_impl::getPrimitiveState(actkin_stabilizer::PrimitiveStateIdl_out command)
 {
   command = new actkin_stabilizer::PrimitiveStateIdl();
-  return this->comp_->getFootStepState(*command);
+  return this->comp_->getPrimitiveState(*command);
 };
 
 CORBA::Boolean ActKinStabilizerService_impl::resetPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command)
@@ -51,12 +51,12 @@ CORBA::Boolean ActKinStabilizerService_impl::goActual()
   return this->comp_->goActual();
 }
 
-CORBA::Boolean ActKinStabilizerService_impl::loadObject(const char *name_, const char *file_)
+CORBA::Boolean ActKinStabilizerService_impl::loadObject(const char *name, const char *file)
 {
   return this->comp_->loadObject(name, file);
 };
 
-CORBA::Boolean ActKinStabilizerService_impl::unloadObject(const char *name_)
+CORBA::Boolean ActKinStabilizerService_impl::unloadObject(const char *name)
 {
   return this->comp_->unloadObject(name);
 };
@@ -71,7 +71,7 @@ CORBA::Boolean ActKinStabilizerService_impl::setObjectStates(const actkin_stabil
   return this->comp_->setObjectStates(objs);
 }
 
-CORBA::Boolean ActKinStabilizerService_impl::getObjectStates(actkin_stabilizer::ObjectStateIdlSeq_out obj)
+CORBA::Boolean ActKinStabilizerService_impl::getObjectStates(actkin_stabilizer::ObjectStateIdlSeq_out objs)
 {
   objs = new actkin_stabilizer::ObjectStateIdlSeq();
   return this->comp_->getObjectStates(*objs);

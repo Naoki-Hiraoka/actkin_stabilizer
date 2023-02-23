@@ -37,7 +37,7 @@ public:
   void onStartAutoBalancer(){
     for(int i=0;i<dqAct.size();i++) dqAct[i].reset(0.0);
     actRootVel.reset(cnoid::Vector6::Zero());
-    actCogVel.reset(cnoid::Vector6::Zero());
+    actCogVel.reset(cnoid::Vector3::Zero());
   }
   void onStartStabilizer(){
   }
@@ -135,7 +135,7 @@ public:
   Attention(){
     // とりあえず6軸拘束で初期化
     C.resize(6,6); C.setIdentity(); ld.resize(6); ld.setZero(); ud.resize(6); ud.setZero();
-    Kp.resize(6); Kp<<50, 50, 50, 20, 20, 20; Kd.resize(6); Kd<<10, 10, 10, 10, 10, 10;
+    Kp.resize(6); Kp<<50, 50, 50, 20, 20, 20; Dp.resize(6); Dp<<10, 10, 10, 10, 10, 10;
     limitp.resize(6); limitp<<5.0, 5.0, 5.0, 5.0, 5.0, 5.0; weightp.resize(6); weightp<<1.0,1.0,1.0,1.0,1.0,1.0;
     Kw.resize(6); Kw.setZero(); Kw.resize(6); Kw.setZero();
     limitw.resize(6); limitw.setZero();
@@ -146,10 +146,26 @@ public:
     this->refWrench.interpolate(dt);
   }
   void goActual(bool clearWrench=false){
-    // localPose2を, Cを満たすように修正する.
-    // TODO. QPを使う.
-    cnoid::Position pose1 = link1 ? link1->T() * localPose1.value() : localPose1.value();
-    this->localPose2.reset(link2 ? link2->T().inverse() * pose1 : pose1);
+    // localPose2またはld/udを, Cを満たすように修正する.
+    bool has_inequality = false;
+    for(int i = 0; i < ld.size(); i++) if(std::abs(ud[i]-ld[i])>1e-4) has_inequality = true;
+    if(has_inequality){
+      cnoid::Position pose1 = this->link1 ? this->link1->T() * this->localPose1.value() : this->localPose1.value();
+      cnoid::Position pose2 = this->link1 ? this->link2->T() * this->localPose2.value() : this->localPose2.value();
+      cnoid::Position pose12 = pose1.inverse() * pose2; // localpose1から見たlocalpose2の位置姿勢
+      cnoid::Vector6 error12;
+      error12.head<3>() = pose12.translation();
+      Eigen::AngleAxisd R12{pose12.linear()};
+      error12.tail<3>() = R12.angle() * R12.axis();
+      cnoid::VectorX value = this->C * error12;
+      for(int i = 0; i < ld.size(); i++) {
+        if(value[i]<ld[i]) ld[i] = value[i];
+        if(value[i]>ud[i]) ud[i] = value[i];
+      }
+    }else{
+      cnoid::Position pose1 = this->link1 ? this->link1->T() * this->localPose1.value() : this->localPose1.value();
+      this->localPose2.reset(this->link2 ? this->link2->T().inverse() * pose1 : pose1);
+    }
     if(clearWrench) this->refWrench.reset(cnoid::Vector6::Zero());
   }
   void onStartAutoBalancer(){

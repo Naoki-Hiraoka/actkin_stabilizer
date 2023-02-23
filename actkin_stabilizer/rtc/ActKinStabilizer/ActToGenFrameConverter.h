@@ -16,6 +16,8 @@ protected:
   mutable bool isInitial = true;
 
 public:
+  void init(GaitParam& gaitParam){
+  }
   void onExecute(double dt){
     rpyOffset.interpolate(dt);
   }
@@ -28,7 +30,7 @@ public:
 public:
   // robotとobjectsの位置姿勢と速度を更新する. actRobotRawとcontactsを用いて
   bool convertFrame(const GaitParam& gaitParam, double dt, // input
-                    Object& robot, std::unordered_map<std::string, std::shared_ptr<Object> >& objects) const; // input & output
+                    std::shared_ptr<Object>& robot, std::vector<std::shared_ptr<Object> >& objects) const; // input & output
 };
 
 #endif

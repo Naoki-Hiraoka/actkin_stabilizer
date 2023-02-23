@@ -39,13 +39,21 @@ public:
   virtual RTC::ReturnCode_t onDeactivated(RTC::UniqueId ec_id);
   virtual RTC::ReturnCode_t onExecute(RTC::UniqueId ec_id);
 
-  bool setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs);
   bool startAutoBalancer();
   bool stopAutoBalancer();
+  bool startStabilizer();
+  bool stopStabilizer();
+  bool setPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command);
+  bool getPrimitiveState(actkin_stabilizer::PrimitiveStateIdl& command);
+  bool resetPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command);
+  bool goActual();
+  bool loadObject(const std::string& name, const std::string& file);
+  bool unloadObject(const std::string& name);
+  bool setObjectState(const actkin_stabilizer::ObjectStateIdl& obj);
+  bool setObjectStates(const actkin_stabilizer::ObjectStateIdlSeq& objs);
+  bool getObjectStates(actkin_stabilizer::ObjectStateIdlSeq& objs);
   bool setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
   bool getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
-  bool startStabilizer(void);
-  bool stopStabilizer(void);
 
 protected:
   std::mutex mutex_;
@@ -61,6 +69,8 @@ protected:
     RTC::InPort<RTC::TimedDoubleSeq> m_qRefIn_;
     RTC::TimedDoubleSeq m_refTau_;
     RTC::InPort<RTC::TimedDoubleSeq> m_refTauIn_;
+    RTC::TimedPoint3D m_refBasePos_; // generate frame
+    RTC::InPort<RTC::TimedPoint3D> m_refBasePosIn_;
     RTC::TimedDoubleSeq m_qAct_;
     RTC::InPort<RTC::TimedDoubleSeq> m_qActIn_;
     RTC::TimedDoubleSeq m_dqAct_;
@@ -76,15 +86,15 @@ protected:
     RTC::OutPort<RTC::TimedPose3D> m_actBasePoseOut_;
     RTC::TimedDoubleSeq m_actBaseTform_;  // Generate World frame
     RTC::OutPort<RTC::TimedDoubleSeq> m_actBaseTformOut_; // for HrpsysSeqStateROSBridge
+    RTC::TimedPoint3D m_actBasePos_; // Generate World frame
+    RTC::OutPort<RTC::TimedPoint3D> m_actBasePosOut_; // for old RTCs
+    RTC::TimedOrientation3D m_actBaseRpy_; // Generate World frame
+    RTC::OutPort<RTC::TimedOrientation3D> m_actBaseRpyOut_; // for old RTCs
 
     ActKinStabilizerService_impl m_service0_;
     RTC::CorbaPort m_ActKinStabilizerServicePort_;
 
     // only for log
-    RTC::TimedPoint3D m_actBasePos_; // Generate World frame
-    RTC::OutPort<RTC::TimedPoint3D> m_actBasePosOut_; // for log
-    RTC::TimedOrientation3D m_actBaseRpy_; // Generate World frame
-    RTC::OutPort<RTC::TimedOrientation3D> m_actBaseRpyOut_; // for log
     RTC::TimedPoint3D m_actCog_; // Generate World frame
     RTC::OutPort<RTC::TimedPoint3D> m_actCogOut_; // for log
   };
@@ -124,7 +134,7 @@ protected:
       case START_ST:
         if(current == MODE_ABC){ next = MODE_SYNC_TO_ST; return true; }else{ return false; }
       case STOP_ST:
-        if(current == MODE_ST){ next = MODE_SYNC_TO_EMG; return true; }else{ return false; }
+        if(current == MODE_ST){ next = MODE_SYNC_TO_STOPST; return true; }else{ return false; }
       default:
         return false;
       }
@@ -142,7 +152,7 @@ protected:
         case MODE_SYNC_TO_ST:
           transitionInterpolator.reset(0.0);
           transitionInterpolator.setGoal(1.0, st_start_transition_time); break;
-        case MODE_SYNC_TO_EMG:
+        case MODE_SYNC_TO_STOPST:
           transitionInterpolator.reset(0.0);
           transitionInterpolator.setGoal(1.0, st_stop_transition_time); break;
         default:
@@ -159,7 +169,7 @@ protected:
             current = next = MODE_IDLE; break;
           case MODE_SYNC_TO_ST:
             current = next = MODE_ST; break;
-          case MODE_SYNC_TO_RELEASE_EMG:
+          case MODE_SYNC_TO_STOPST:
             current = next = MODE_ABC; break;
           default:
             break;
@@ -179,6 +189,7 @@ protected:
     bool isSTRunning() const{ return (current==MODE_SYNC_TO_ST) || (current==MODE_ST) ;}
   };
   ControlMode mode_;
+  cpp_filters::TwoPointInterpolatorSE3 outputRootPoseFilter_{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB};
 
   GaitParam gaitParam_;
   ActToGenFrameConverter actToGenFrameConverter_;
@@ -190,8 +201,7 @@ protected:
   bool getProperty(const std::string& key, std::string& ret);
 
   static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision);
-  static bool execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const ActToGenFrameConverter& actToGenFrameConverter, const ResolvedAccelerationController& resolvedAccelerationController, const WrenchDistributor& wrenchDistributor);
-  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam);
+  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter);
 };
 
 

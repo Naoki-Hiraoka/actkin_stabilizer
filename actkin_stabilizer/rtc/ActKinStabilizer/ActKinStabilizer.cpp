@@ -25,6 +25,7 @@ static const char* ActKinStabilizer_spec[] = {
 ActKinStabilizer::Ports::Ports() :
   m_qRefIn_("qRef", m_qRef_),
   m_refTauIn_("refTauIn", m_refTau_),
+  m_refBasePosIn_("refBasePosIn", m_refBasePos_),
   m_qActIn_("qAct", m_qAct_),
   m_dqActIn_("dqAct", m_dqAct_),
   m_actImuIn_("actImuIn", m_actImu_),
@@ -53,6 +54,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   // add ports
   this->addInPort("qRef", this->ports_.m_qRefIn_);
   this->addInPort("refTauIn", this->ports_.m_refTauIn_);
+  this->addInPort("refBasePosIn", this->ports_.m_refBasePosIn_);
   this->addInPort("qAct", this->ports_.m_qActIn_);
   this->addInPort("dqAct", this->ports_.m_dqActIn_);
   this->addInPort("actImuIn", this->ports_.m_actImuIn_);
@@ -83,17 +85,17 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     this->gaitParam_.init(robot);
 
     // generate JointParams
-    for(int i=0;i<this->gaitParam_.genRobot->numJoints();i++){
-      cnoid::LinkPtr joint = this->gaitParam_.genRobot->joint(i);
+    for(int i=0;i<this->gaitParam_.robot->body->numJoints();i++){
+      cnoid::LinkPtr joint = this->gaitParam_.robot->body->joint(i);
       double climit = 0.0, gearRatio = 0.0, torqueConst = 0.0;
       joint->info()->read("climit",climit); joint->info()->read("gearRatio",gearRatio); joint->info()->read("torqueConst",torqueConst);
-      double maxTorque = std::max(climit * gearRatio * torqueConst, 0.0)
+      double maxTorque = std::max(climit * gearRatio * torqueConst, 0.0);
       this->gaitParam_.maxTorque[i] = maxTorque;
       this->gaitParam_.softMaxTorque[i].reset(maxTorque);
     }
     std::string jointLimitTableStr; this->getProperty("joint_limit_table",jointLimitTableStr);
     {
-      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.actRobot, jointLimitTableStr);
+      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->gaitParam_.robot->body, jointLimitTableStr);
       for(size_t i=0;i<jointLimitTables.size();i++){
         // apply margin
         for(size_t j=0;j<jointLimitTables[i]->lLimitTable().size();j++){
@@ -107,8 +109,8 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     }
 
     // apply margin to jointlimit
-    for(int i=0;i<this->gaitParam_.actRobot->numJoints();i++){
-      cnoid::LinkPtr joint = this->gaitParam_.actRobot->joint(i);
+    for(int i=0;i<this->gaitParam_.robot->body->numJoints();i++){
+      cnoid::LinkPtr joint = this->gaitParam_.robot->body->joint(i);
       if(joint->q_upper() - joint->q_lower() > 0.002){
         joint->setJointRange(joint->q_lower()+0.001,joint->q_upper()-0.001);
       }
@@ -164,13 +166,13 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         contact->name = name;
         contact->link1 = this->gaitParam_.robot->body->link(parentLink);
         contact->localPose1 = localT;
-        this->gaitParam_.contacts[name] = contact;
+        this->gaitParam_.contacts[contact->name] = contact;
       }else{
         std::shared_ptr<Attention> attention;
         attention->name = name;
         attention->link1 = this->gaitParam_.robot->body->link(parentLink);
         attention->localPose1.reset(localT);
-        this->gaitParam_.attentions[name] = attention;
+        this->gaitParam_.attentions[attention->name] = attention;
       }
       idx++;
     }
@@ -181,16 +183,30 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         std::shared_ptr<Attention> attention;
         attention->name = "cog";
         attention->cog2 = this->gaitParam_.robot->body;
-        attention->localPose1.reset(localT);
-        this->gaitParam_.attentions[name] = attention;
+        // TODO gain, priority
+        this->gaitParam_.attentions[attention->name] = attention;
       }
-      // root
+      {
+        // root
+        std::shared_ptr<Attention> attention;
+        attention->name = "root";
+        attention->link1 = this->gaitParam_.robot->body->rootLink();
+        attention->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(3,6); for(int i=0;i<3;i++) attention->C.insert(3+i,i)=1.0;
+        attention->ld.resize(3); attention->ld.setZero(); attention->ud.resize(3); attention->ud.setZero();
+        attention->Kp.resize(3); attention->Kp<<100, 100, 100; attention->Dp.resize(3); attention->Dp<<25, 25, 25;
+        attention->limitp.resize(3); attention->limitp<<5.0, 5.0, 5.0; attention->weightp.resize(3); attention->weightp<<1.0,1.0,1.0;
+        attention->Kw.resize(3); attention->Kw.setZero(); attention->Kw.resize(3); attention->Kw.setZero();
+        attention->limitw.resize(3); attention->limitw.setZero();
+        // TODO gain, priority
+        this->gaitParam_.attentions[attention->name] = attention;
+      }
     }
-
   }
 
-  // init Stabilizer
-  this->stabilizer_.init(this->gaitParam_, this->gaitParam_.actRobotTqc, this->gaitParam_.actRobot);
+  // init modules
+  this->actToGenFrameConverter_.init(this->gaitParam_);
+  this->wrenchDistributor_.init(this->gaitParam_);
+  this->resolvedAccelerationController_.init(this->gaitParam_);
 
   // initialize parameters
   this->loop_ = 0;
@@ -440,70 +456,19 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
 }
 
 // static function
-bool ActKinStabilizer::execActKinStabilizer(const ActKinStabilizer::ControlMode& mode, GaitParam& gaitParam, double dt, const ActToGenFrameConverter& actToGenFrameConverter, const ResolvedAccelerationController& resolvedAccelerationController, const WrenchDistributor& wrenchDistributor) {
-  if(mode.isSyncToABCInit()){ // startAutoBalancer直後の初回. gaitParamのリセット
-    gaitParam.onStartAutoBalancer();
-  }
-
-  // robotとobjectsの位置姿勢と速度を更新する. actRobotRawとcontactsを用いて
-  actToGenFrameConverter.convertFrame(gaitParam, dt,
-                                      gaitParam.robot, gaitParam.activeObjects);
-
-  if(mode.isSTRunning()){
-    if(mode.isSyncToSTInit()){ // startStabilizer直後の初回. gaitParamのリセット
-      gaitParam.onStartStabilizer();
-    }
-
-    // contactsとattentionsを満たすようにrobotとobjectsの目標加速度を求める
-    resolvedAccelerationController.solve(gaitParam, dt,
-                                         gaitParam.robot, gaitParam.activeObjects);
-
-    // contactsに接触力を分配し、robotの目標関節トルクを求める
-    wrenchDistributor.solve(gaitParam, dt,
-                            gaitParam.robot);
-  }
-
-  return true;
-}
-
-// static function
-bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter, std::vector<cpp_filters::TwoPointInterpolator<double> >& outputJointAngleFilter){
-  {
-    // q
-    ports.m_q_.tm = ports.m_qRef_.tm;
-    ports.m_q_.data.length(gaitParam.genRobot->numJoints());
-    for(int i=0;i<gaitParam.genRobot->numJoints();i++){
-      if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_IDLE || !gaitParam.jointControllable[i]){
-        outputJointAngleFilter[i].reset(gaitParam.refRobotRaw->joint(i)->q()); // shの値をそのまま出力
-      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_EMG || mode.now() == ActKinStabilizer::ControlMode::MODE_EMG){
-        // 今の値のまま
-      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_RELEASE_EMG){
-        outputJointAngleFilter[i].setGoal(gaitParam.refRobotRaw->joint(i)->q(), mode.remainTime());
-      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ST || mode.now() == ActKinStabilizer::ControlMode::MODE_ST){
-        outputJointAngleFilter[i].setGoal(gaitParam.actRobotRaw->joint(i)->q(), 0.3); // 0.3秒で遅れてactualで上書き
-      }
-
-      outputJointAngleFilter[i].interpolate(dt);
-      if(std::isfinite(outputJointAngleFilter[i].value())) ports.m_q_.data[i] = outputJointAngleFilter[i].value();
-      else std::cerr << "m_q is not finite!" << std::endl;
-    }
-    ports.m_qOut_.write();
-  }
-
+bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter){
   {
     // tau
     ports.m_genTau_.tm = ports.m_qRef_.tm;
-    ports.m_genTau_.data.length(gaitParam.actRobotTqc->numJoints());
-    for(int i=0;i<gaitParam.actRobotTqc->numJoints();i++){
+    ports.m_genTau_.data.length(gaitParam.robot->body->numJoints());
+    for(int i=0;i<gaitParam.robot->body->numJoints();i++){
       double value = 0.0;
       if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_ABC || mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_IDLE || !gaitParam.jointControllable[i]){
         value = gaitParam.refRobotRaw->joint(i)->u();
-      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_EMG || mode.now() == ActKinStabilizer::ControlMode::MODE_EMG){
-        value = 0.0; // stopST補間中は、tauを少しずつ0に減らして行きたくなるが、吹っ飛ぶことがあるので一気に0にした方が安全
-      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_RELEASE_EMG){
-        value = mode.transitionRatio() * gaitParam.refRobotRaw->joint(i)->u();
+      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_STOPST){
+        value = gaitParam.refRobotRaw->joint(i)->u(); // stopST補間中は、tauを少しずつ0に減らして行きたくなるが、吹っ飛ぶことがあるので一気に0にした方が安全
       }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ST || mode.now() == ActKinStabilizer::ControlMode::MODE_ST){
-        value = gaitParam.actRobotTqc->joint(i)->u();
+        value = gaitParam.robot->body->joint(i)->u();
       }
 
       if(std::isfinite(value)) ports.m_genTau_.data[i] = value;
@@ -512,33 +477,14 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
     ports.m_genTauOut_.write();
   }
 
-  // Gains
-  if(!CORBA::is_nil(ports.m_robotHardwareService0_._ptr()) && //コンシューマにプロバイダのオブジェクト参照がセットされていない(接続されていない)状態
-     !ports.m_robotHardwareService0_->_non_existent()){ //プロバイダのオブジェクト参照は割り当てられているが、相手のオブジェクトが非活性化 (RTC は Inactive 状態) になっている状態
-    for(int i=0;i<gaitParam.genRobot->numJoints();i++){
-      // Stabilizerが動いている間にonDeactivated()->onActivated()が呼ばれると、ゲインがもとに戻らない. onDeactivated()->onActivated()が呼ばれるのはサーボオン直前で、通常、サーボオン時にゲインを指令するので、問題ない.
-      if(!gaitParam.jointControllable[i]){
-        // pass
-      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_ST && mode.pre() != mode.now()){
-        ports.m_robotHardwareService0_->setServoPGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),0.0*100.0,mode.remainTime());
-        ports.m_robotHardwareService0_->setServoDGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),0.0*100.0,mode.remainTime());
-      }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_EMG && mode.pre() != mode.now()){
-        ports.m_robotHardwareService0_->setServoPGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),100.0*100.0,mode.remainTime());
-        ports.m_robotHardwareService0_->setServoDGainPercentageWithTime(gaitParam.actRobotTqc->joint(i)->name().c_str(),100.0*100.0,mode.remainTime());
-      }else{
-        // pass
-      }
-    }
-  }
-
   {
     // basePose (hrpsys_odom)
     if(mode.now() == ActKinStabilizer::ControlMode::MODE_IDLE){
       outputRootPoseFilter.reset(gaitParam.actRobotRaw->rootLink()->T()); // pはref値. RはIMUが入っている
     }else if(mode.now() == ActKinStabilizer::ControlMode::MODE_SYNC_TO_IDLE){
-      outputRootPoseFilter.setGoal(gaitParam.actRobotRaw->rootLink()->T(), mode.remainTime()); // pはref値. RはIMUが入っている
+      outputRootPoseFilter.setGoal(gaitParam.actRobotRaw->rootLink()->T(), mode.remainTime());
     }else{
-      outputRootPoseFilter.reset(gaitParam.actRobot->rootLink()->T()); // pはref値. RはIMUが入っている
+      outputRootPoseFilter.reset(gaitParam.robot->body->rootLink()->T()); // 積算されていく
     }
     outputRootPoseFilter.interpolate(dt);
     cnoid::Position basePose = outputRootPoseFilter.value();
@@ -550,209 +496,50 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
     if(std::isfinite(basePos[0]) && std::isfinite(basePos[1]) && std::isfinite(basePos[2]) &&
        std::isfinite(baseRpy[0]) && std::isfinite(baseRpy[1]) && std::isfinite(baseRpy[2])){
 
-      ports.m_genBasePose_.tm = ports.m_qRef_.tm;
-      ports.m_genBasePose_.data.position.x = basePos[0];
-      ports.m_genBasePose_.data.position.y = basePos[1];
-      ports.m_genBasePose_.data.position.z = basePos[2];
-      ports.m_genBasePose_.data.orientation.r = baseRpy[0];
-      ports.m_genBasePose_.data.orientation.p = baseRpy[1];
-      ports.m_genBasePose_.data.orientation.y = baseRpy[2];
-      ports.m_genBasePoseOut_.write();
+      ports.m_actBasePose_.tm = ports.m_qRef_.tm;
+      ports.m_actBasePose_.data.position.x = basePos[0];
+      ports.m_actBasePose_.data.position.y = basePos[1];
+      ports.m_actBasePose_.data.position.z = basePos[2];
+      ports.m_actBasePose_.data.orientation.r = baseRpy[0];
+      ports.m_actBasePose_.data.orientation.p = baseRpy[1];
+      ports.m_actBasePose_.data.orientation.y = baseRpy[2];
+      ports.m_actBasePoseOut_.write();
 
-      ports.m_genBaseTform_.tm = ports.m_qRef_.tm;
-      ports.m_genBaseTform_.data.length(12);
+      ports.m_actBaseTform_.tm = ports.m_qRef_.tm;
+      ports.m_actBaseTform_.data.length(12);
       for(int i=0;i<3;i++){
-        ports.m_genBaseTform_.data[i] = basePos[i];
+        ports.m_actBaseTform_.data[i] = basePos[i];
       }
       for(int i=0;i<3;i++){
         for(int j=0;j<3;j++){
-          ports.m_genBaseTform_.data[3+i*3+j] = baseR(i,j);// row major
+          ports.m_actBaseTform_.data[3+i*3+j] = baseR(i,j);// row major
         }
       }
-      ports.m_genBaseTformOut_.write();
+      ports.m_actBaseTformOut_.write();
 
-      ports.m_genBasePos_.tm = ports.m_qRef_.tm;
-      ports.m_genBasePos_.data.x = basePos[0];
-      ports.m_genBasePos_.data.y = basePos[1];
-      ports.m_genBasePos_.data.z = basePos[2];
-      ports.m_genBasePosOut_.write();
-      ports.m_genBaseRpy_.tm = ports.m_qRef_.tm;
-      ports.m_genBaseRpy_.data.r = baseRpy[0];
-      ports.m_genBaseRpy_.data.p = baseRpy[1];
-      ports.m_genBaseRpy_.data.y = baseRpy[2];
-      ports.m_genBaseRpyOut_.write();
+      ports.m_actBasePos_.tm = ports.m_qRef_.tm;
+      ports.m_actBasePos_.data.x = basePos[0];
+      ports.m_actBasePos_.data.y = basePos[1];
+      ports.m_actBasePos_.data.z = basePos[2];
+      ports.m_actBasePosOut_.write();
+      ports.m_actBaseRpy_.tm = ports.m_qRef_.tm;
+      ports.m_actBaseRpy_.data.r = baseRpy[0];
+      ports.m_actBaseRpy_.data.p = baseRpy[1];
+      ports.m_actBaseRpy_.data.y = baseRpy[2];
+      ports.m_actBaseRpyOut_.write();
     }else{
-      std::cerr << "m_genBasePose is not finite!" << std::endl;
+      std::cerr << "m_actBasePose is not finite!" << std::endl;
     }
   }
 
-  // acc ref
-  {
-    cnoid::Vector3 genImuAcc = cnoid::Vector3::Zero(); // imu frame
-    if(mode.isABCRunning()){
-      cnoid::RateGyroSensorPtr imu = gaitParam.actRobot->findDevice<cnoid::RateGyroSensor>("gyrometer"); // actrobot imu
-      cnoid::Matrix3 imuR = imu->link()->R() * imu->R_local(); // generate frame
-      genImuAcc/*imu frame*/ = imuR.transpose() * gaitParam.genCogAcc/*generate frame*/; // 本当は重心の加速ではなく、関節の加速等を考慮したimuセンサの加速を直接与えたいが、関節角度ベースのinverse-kinematicsを使う以上モデルのimuセンサの位置の加速が不連続なものになることは避けられないので、重心の加速を用いている. この出力の主な用途は歩行時の姿勢推定のため、重心の加速が考慮できればだいたい十分.
-    }
-    if(std::isfinite(genImuAcc[0]) && std::isfinite(genImuAcc[1]) && std::isfinite(genImuAcc[2])){
-      ports.m_genImuAcc_.tm = ports.m_qRef_.tm;
-      ports.m_genImuAcc_.data.ax = genImuAcc[0];
-      ports.m_genImuAcc_.data.ay = genImuAcc[1];
-      ports.m_genImuAcc_.data.az = genImuAcc[2];
-      ports.m_genImuAccOut_.write();
-    }else{
-      std::cerr << "m_genImuAcc is not finite!" << std::endl;
-    }
-  }
-
-  //landngTarget
-  if(mode.isABCRunning() && // ABC起動中でないと支持脚という概念が無い
-     gaitParam.footstepNodesList.size() >= 2 &&
-     ((gaitParam.footstepNodesList[0].isSupportPhase[RLEG] && !gaitParam.footstepNodesList[0].isSupportPhase[LLEG]) ||
-      (!gaitParam.footstepNodesList[0].isSupportPhase[RLEG] && gaitParam.footstepNodesList[0].isSupportPhase[LLEG])) && // 今が片足支持
-     (gaitParam.footstepNodesList[1].isSupportPhase[RLEG] && gaitParam.footstepNodesList[1].isSupportPhase[LLEG]) // 次が両足支持
-     ) {
-    int supportLeg = gaitParam.footstepNodesList[0].isSupportPhase[RLEG] ? RLEG : LLEG;
-    int swingLeg = gaitParam.footstepNodesList[0].isSupportPhase[RLEG] ? LLEG : RLEG;
-    ports.m_landingTarget_.tm = ports.m_qRef_.tm;
-    cnoid::Position supportPoseHorizontal = mathutil::orientCoordToAxis(gaitParam.genCoords[supportLeg].value(), cnoid::Vector3::UnitZ());
-    ports.m_landingTarget_.data.x = (supportPoseHorizontal.inverse() * gaitParam.footstepNodesList[0].dstCoords[swingLeg].translation())[0];
-    ports.m_landingTarget_.data.y = (supportPoseHorizontal.inverse() * gaitParam.footstepNodesList[0].dstCoords[swingLeg].translation())[1];
-    ports.m_landingTarget_.data.z = (supportPoseHorizontal.inverse() * gaitParam.footstepNodesList[0].dstCoords[swingLeg].translation())[2];
-    ports.m_landingTarget_.data.l_r = gaitParam.footstepNodesList[0].isSupportPhase[RLEG] ? auto_stabilizer_msgs::RLEG : auto_stabilizer_msgs::LLEG;
-    ports.m_landingTargetOut_.write();
-  }
-
-  // actEEPose actEEWrench (for wholebodymasterslave)
-  if(mode.isABCRunning()){
-    for(int i=0;i<gaitParam.endEffectors.size();i++){
-      ports.m_actEEPose_[i].tm = ports.m_qRef_.tm;
-      ports.m_actEEPose_[i].data.position.x = gaitParam.actEEPose[i].translation()[0];
-      ports.m_actEEPose_[i].data.position.y = gaitParam.actEEPose[i].translation()[1];
-      ports.m_actEEPose_[i].data.position.z = gaitParam.actEEPose[i].translation()[2];
-      cnoid::Vector3 rpy = cnoid::rpyFromRot(gaitParam.actEEPose[i].linear());
-      ports.m_actEEPose_[i].data.orientation.r = rpy[0];
-      ports.m_actEEPose_[i].data.orientation.p = rpy[1];
-      ports.m_actEEPose_[i].data.orientation.y = rpy[2];
-      ports.m_actEEPoseOut_[i]->write();
-    }
-    for(int i=0;i<gaitParam.endEffectors.size();i++){
-      ports.m_actEEWrench_[i].tm = ports.m_qRef_.tm;
-      ports.m_actEEWrench_[i].data.length(6);
-      for(int j=0;j<6;j++) ports.m_actEEWrench_[i].data[j] = gaitParam.actEEWrench[i][j];
-      ports.m_actEEWrenchOut_[i]->write();
-    }
-  }
 
   // only for logger. (IDLE時の出力や、モード遷移時の連続性はてきとうで良い)
   if(mode.isABCRunning()){
-    ports.m_genCog_.tm = ports.m_qRef_.tm;
-    ports.m_genCog_.data.x = gaitParam.genCog[0];
-    ports.m_genCog_.data.y = gaitParam.genCog[1];
-    ports.m_genCog_.data.z = gaitParam.genCog[2];
-    ports.m_genCogOut_.write();
-    cnoid::Vector3 genDcm = gaitParam.genCog + gaitParam.genCogVel / gaitParam.omega;
-    ports.m_genDcm_.tm = ports.m_qRef_.tm;
-    ports.m_genDcm_.data.x = genDcm[0];
-    ports.m_genDcm_.data.y = genDcm[1];
-    ports.m_genDcm_.data.z = genDcm[2];
-    ports.m_genDcmOut_.write();
-    ports.m_genZmp_.tm = ports.m_qRef_.tm;
-    ports.m_genZmp_.data.x = gaitParam.refZmpTraj[0].getStart()[0];
-    ports.m_genZmp_.data.y = gaitParam.refZmpTraj[0].getStart()[1];
-    ports.m_genZmp_.data.z = gaitParam.refZmpTraj[0].getStart()[2];
-    ports.m_genZmpOut_.write();
-    ports.m_tgtZmp_.tm = ports.m_qRef_.tm;
-    ports.m_tgtZmp_.data.x = gaitParam.debugData.stTargetZmp[0];
-    ports.m_tgtZmp_.data.y = gaitParam.debugData.stTargetZmp[1];
-    ports.m_tgtZmp_.data.z = gaitParam.debugData.stTargetZmp[2];
-    ports.m_tgtZmpOut_.write();
     ports.m_actCog_.tm = ports.m_qRef_.tm;
-    ports.m_actCog_.data.x = gaitParam.actCog[0];
-    ports.m_actCog_.data.y = gaitParam.actCog[1];
-    ports.m_actCog_.data.z = gaitParam.actCog[2];
+    ports.m_actCog_.data.x = gaitParam.robot->body->centerOfMass()[0];
+    ports.m_actCog_.data.y = gaitParam.robot->body->centerOfMass()[1];
+    ports.m_actCog_.data.z = gaitParam.robot->body->centerOfMass()[2];
     ports.m_actCogOut_.write();
-    cnoid::Vector3 actDcm = gaitParam.actCog + gaitParam.actCogVel.value() / gaitParam.omega;
-    ports.m_actDcm_.tm = ports.m_qRef_.tm;
-    ports.m_actDcm_.data.x = actDcm[0];
-    ports.m_actDcm_.data.y = actDcm[1];
-    ports.m_actDcm_.data.z = actDcm[2];
-    ports.m_actDcmOut_.write();
-    ports.m_dstLandingPos_.tm = ports.m_qRef_.tm;
-    ports.m_dstLandingPos_.data.length(6);
-    ports.m_dstLandingPos_.data[0] = gaitParam.footstepNodesList[0].dstCoords[RLEG].translation()[0];
-    ports.m_dstLandingPos_.data[1] = gaitParam.footstepNodesList[0].dstCoords[RLEG].translation()[1];
-    ports.m_dstLandingPos_.data[2] = gaitParam.footstepNodesList[0].dstCoords[RLEG].translation()[2];
-    ports.m_dstLandingPos_.data[3] = gaitParam.footstepNodesList[0].dstCoords[LLEG].translation()[0];
-    ports.m_dstLandingPos_.data[4] = gaitParam.footstepNodesList[0].dstCoords[LLEG].translation()[1];
-    ports.m_dstLandingPos_.data[5] = gaitParam.footstepNodesList[0].dstCoords[LLEG].translation()[2];
-    ports.m_dstLandingPosOut_.write();
-    ports.m_remainTime_.tm = ports.m_qRef_.tm;
-    ports.m_remainTime_.data.length(1);
-    ports.m_remainTime_.data[0] = gaitParam.footstepNodesList[0].remainTime;
-    ports.m_remainTimeOut_.write();
-    ports.m_genCoords_.tm = ports.m_qRef_.tm;
-    ports.m_genCoords_.data.length(12);
-    for (int i=0; i<3; i++) {
-      ports.m_genCoords_.data[0+i] = gaitParam.genCoords[RLEG].value().translation()[i];
-      ports.m_genCoords_.data[3+i] = gaitParam.genCoords[LLEG].value().translation()[i];
-      ports.m_genCoords_.data[6+i] = gaitParam.genCoords[RLEG].getGoal().translation()[i];
-      ports.m_genCoords_.data[9+i] = gaitParam.genCoords[LLEG].getGoal().translation()[i];
-    }
-    ports.m_genCoordsOut_.write();
-    {
-      ports.m_captureRegion_.tm = ports.m_qRef_.tm;
-      int sum = 0;
-      for (int i=0; i<gaitParam.debugData.capturableHulls.size(); i++) sum+=gaitParam.debugData.capturableHulls[i].size();
-      ports.m_captureRegion_.data.length(sum*2);
-      int index = 0;
-      for (int i=0; i<gaitParam.debugData.capturableHulls.size(); i++) {
-        for (int j=0; j<gaitParam.debugData.capturableHulls[i].size(); j++) {
-          ports.m_captureRegion_.data[index+0] = gaitParam.debugData.capturableHulls[i][j][0];
-          ports.m_captureRegion_.data[index+1] = gaitParam.debugData.capturableHulls[i][j][1];
-          index+=2;
-        }
-      }
-      ports.m_captureRegionOut_.write();
-    }
-    {
-      ports.m_steppableRegionLog_.tm = ports.m_qRef_.tm;
-      ports.m_steppableRegionNumLog_.tm = ports.m_qRef_.tm;
-      int sum = 0;
-      for (int i=0; i<gaitParam.steppableRegion.size(); i++) sum+=gaitParam.steppableRegion[i].size();
-      ports.m_steppableRegionLog_.data.length(sum*2);
-      ports.m_steppableRegionNumLog_.data.length(gaitParam.steppableRegion.size());
-      int index=0;
-      for (int i=0; i<gaitParam.steppableRegion.size(); i++) {
-        for (int j=0; j<gaitParam.steppableRegion[i].size(); j++) {
-          ports.m_steppableRegionLog_.data[index+0] = gaitParam.steppableRegion[i][j][0];
-          ports.m_steppableRegionLog_.data[index+1] = gaitParam.steppableRegion[i][j][1];
-          index+=2;
-        }
-        ports.m_steppableRegionNumLog_.data[i] = gaitParam.steppableRegion[i].size();
-      }
-      ports.m_steppableRegionLogOut_.write();
-      ports.m_steppableRegionNumLogOut_.write();
-    }
-    ports.m_strideLimitationHull_.tm = ports.m_qRef_.tm;
-    ports.m_strideLimitationHull_.data.length(gaitParam.debugData.strideLimitationHull.size()*2);
-    for (int i=0; i<gaitParam.debugData.strideLimitationHull.size(); i++) {
-      ports.m_strideLimitationHull_.data[i*2+0] = gaitParam.debugData.strideLimitationHull[i][0];
-      ports.m_strideLimitationHull_.data[i*2+1] = gaitParam.debugData.strideLimitationHull[i][1];
-    }
-    ports.m_strideLimitationHullOut_.write();
-    ports.m_cpViewerLog_.tm = ports.m_qRef_.tm;
-    ports.m_cpViewerLog_.data.length(gaitParam.debugData.cpViewerLog.size());
-    for (int i=0; i<gaitParam.debugData.cpViewerLog.size(); i++) {
-      ports.m_cpViewerLog_.data[i] = gaitParam.debugData.cpViewerLog[i];
-    }
-    ports.m_cpViewerLogOut_.write();
-    for(int i=0;i<gaitParam.endEffectors.size();i++){
-      ports.m_tgtEEWrench_[i].tm = ports.m_qRef_.tm;
-      ports.m_tgtEEWrench_[i].data.length(6);
-      for(int j=0;j<6;j++) ports.m_tgtEEWrench_[i].data[j] = gaitParam.debugData.stEETargetWrench[i][j];
-      ports.m_tgtEEWrenchOut_[i]->write();
-    }
   }
 
   return true;
@@ -773,17 +560,17 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   // 内部の補間器をdtだけ進める
   this->mode_.update(dt);
   this->gaitParam_.onExecute(dt);
-  this->actToGenFrameConverter_.onExecute(this->dt_);
-  this->resolvedAccelerationController_.onExecute(this->dt_);
-  this->wrenchDistributor_.onExecute(this->dt_);
+  this->actToGenFrameConverter_.onExecute(dt);
+  this->resolvedAccelerationController_.onExecute(dt);
+  this->wrenchDistributor_.onExecute(dt);
 
 
-  if(!ActKinStabilizer::readInPortData(this->dt_, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.selfCollision, this->gaitParam_.steppableRegion, this->gaitParam_.steppableHeight, this->gaitParam_.relLandingHeight, this->gaitParam_.relLandingNormal)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
+  if(!ActKinStabilizer::readInPortData(dt, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.refEEWrenchOrigin, this->gaitParam_.refEEPoseRaw, this->gaitParam_.selfCollision, this->gaitParam_.steppableRegion, this->gaitParam_.steppableHeight, this->gaitParam_.relLandingHeight, this->gaitParam_.relLandingNormal)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
 
 
   if(this->mode_.isABCRunning()) {
-    if(mode.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
-      this->gaitParam.onStartAutoBalancer();
+    if(this->mode_.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット
+      this->gaitParam_.onStartAutoBalancer();
       this->actToGenFrameConverter_.onStartAutoBalancer();
     }
 
@@ -791,24 +578,24 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
     this->actToGenFrameConverter_.convertFrame(this->gaitParam_, dt, // input
                                                this->gaitParam_.robot, this->gaitParam_.activeObjects); // input & output
 
-    if(mode.isSTRunning()){
+    if(this->mode_.isSTRunning()){
       if(this->mode_.isSyncToSTInit()){ // startStabilizer直後の初回. 内部パラメータのリセット
-        this->gaitParam.onStartStabilizer();
+        this->gaitParam_.onStartStabilizer();
         this->resolvedAccelerationController_.onStartStabilizer();
         this->wrenchDistributor_.onStartStabilizer();
       }
 
       // contactsとattentionsを満たすようにrobotとobjectsの目標加速度を求める
-      this->resolvedAccelerationController_.solve(this->gaitParam_, dt,
-                                                  this->gaitParam_.robot, this->gaitParam_.activeObjects);
+      this->resolvedAccelerationController_.execResolvedAccelerationController(this->gaitParam_, dt,
+                                                                               this->gaitParam_.robot, this->gaitParam_.activeObjects);
 
       // contactsに接触力を分配し、robotの目標関節トルクを求める
-      this->wrenchDistributor_.solve(this->gaitParam_, dt,
-                                     this->gaitParam_.robot);
+      this->wrenchDistributor_.execWrenchDistributor(this->gaitParam_, dt,
+                                                     this->gaitParam_.robot);
     }
   }
 
-  ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, this->dt_, this->gaitParam_, this->outputRootPoseFilter_, this->outputJointAngleFilter_);
+  ActKinStabilizer::writeOutPortData(this->ports_, this->mode_, dt, this->gaitParam_, this->outputRootPoseFilter_);
 
   return RTC::RTC_OK;
 }
@@ -826,16 +613,7 @@ RTC::ReturnCode_t ActKinStabilizer::onDeactivated(RTC::UniqueId ec_id){
 }
 RTC::ReturnCode_t ActKinStabilizer::onFinalize(){ return RTC::RTC_OK; }
 
-bool ActKinStabilizer::setFootSteps(const actkin_stabilizer::ActKinStabilizerService::FootstepSequence& fs){
-  actkin_stabilizer::ActKinStabilizerService::StepParamSequence sps;
-  sps.length(fs.length());
-  for(int i=0;i<fs.length();i++){
-    sps[i].step_height = this->footStepGenerator_.defaultStepHeight;
-    sps[i].step_time = this->footStepGenerator_.defaultStepTime;
-    sps[i].swing_end = false;
-  }
-  return this->setFootStepsWithParam(fs, sps); // この中でmutexをとるので、setFootSteps関数ではmutexはとらない
-}
+
 
 
 bool ActKinStabilizer::startAutoBalancer(){
@@ -881,6 +659,34 @@ bool ActKinStabilizer::stopStabilizer(void){
     std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
     return false;
   }
+}
+
+bool ActKinStabilizer::setPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command){
+  return true;
+}
+bool ActKinStabilizer::getPrimitiveState(actkin_stabilizer::PrimitiveStateIdl& command){
+  return true;
+}
+bool ActKinStabilizer::resetPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command){
+  return true;
+}
+bool ActKinStabilizer::goActual(){
+  return true;
+}
+bool ActKinStabilizer::loadObject(const std::string& name, const std::string& file){
+  return true;
+}
+bool ActKinStabilizer::unloadObject(const std::string& name){
+  return true;
+}
+bool ActKinStabilizer::setObjectState(const actkin_stabilizer::ObjectStateIdl& obj){
+  return true;
+}
+bool ActKinStabilizer::setObjectStates(const actkin_stabilizer::ObjectStateIdlSeq& objs){
+  return true;
+}
+bool ActKinStabilizer::getObjectStates(actkin_stabilizer::ObjectStateIdlSeq& objs){
+  return true;
 }
 
 bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param){

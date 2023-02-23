@@ -4,7 +4,7 @@
 #include <cnoid/EigenUtil>
 
 bool ActToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt, // input
-                    Object& robot, std::unordered_map<std::string, std::shared_ptr<Object> >& objects) const // input & output
+                    std::shared_ptr<Object>& robot, std::vector<std::shared_ptr<Object> >& objects) const // input & output
 {
 
   // cnoid::Vector3 actCogPrev = actRobot->centerOfMass();
