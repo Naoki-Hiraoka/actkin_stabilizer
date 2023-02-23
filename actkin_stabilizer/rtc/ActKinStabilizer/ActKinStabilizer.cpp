@@ -423,18 +423,12 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
             axis++;
           }
         }
-        if(!rtmutil::isAllFinite(param.C)){
-          std::cerr << "contact C is not finite! " << std::endl;
-          continue;
-        }
+        if(!rtmutil::isAllFinite(param.C)){ std::cerr << "contact C is not finite! " << std::endl; continue; }
         bool valid = true;
         for(int row = 0; row < param.C.length(); row++){
           if(param.C[row].length() != axis) { valid = false; break; }
         }
-        if(!valid) {
-          std::cerr << "contact C dimension mismatch! " << std::endl;
-          continue;
-        }
+        if(!valid) { std::cerr << "contact C dimension mismatch! " << std::endl; continue; }
         contact->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(param.C.length(),axis);
         for(int row = 0; row < param.C.length(); row++){
           for(int col = 0; col < param.C[row].length(); col++){
@@ -443,32 +437,13 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
             }
           }
         }
-        if(!rtmutil::isAllFinite(param.ld) || !rtmutil::isAllFinite(param.ud)){
-          std::cerr << "contact ld/ud is not finite! " << std::endl;
-          continue;
-        }
-        if(param.ld.length() != param.C.length() || param.ud.length() != param.C.length()){
-          std::cerr << "contact ld/ud dimension mismatch! " << param.ld.length() << " " << param.ud.length() << std::endl;
-          continue;
-        }
-        contact->ld = cnoid::VectorX(param.ld.length());
-        contact->ud = cnoid::VectorX(param.ud.length());
-        for(int row = 0; row < param.C.length(); row++){
-          contact->ld[row] = param.ld[row];
-          contact->ud[row] = param.ud[row];
-        }
-        if(!rtmutil::isAllFinite(param.w)){
-          std::cerr << "contact w is not finite! " << std::endl;
-          continue;
-        }
-        if(param.w.length() != axis){
-          std::cerr << "contact w dimension mismatch! " << param.w.length() << std::endl;
-          continue;
-        }
-        contact->w = cnoid::VectorX(param.w.length());
-        for(int row = 0; row < axis; row++){
-          contact->w[row] = param.w[row];
-        }
+        if(!rtmutil::isAllFinite(param.ld) || !rtmutil::isAllFinite(param.ud)){ std::cerr << "contact ld/ud is not finite! " << std::endl; continue; }
+        if(param.ld.length() != param.C.length() || param.ud.length() != param.C.length()){ std::cerr << "contact ld/ud dimension mismatch! " << param.ld.length() << " " << param.ud.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.ld, contact->ld);
+        eigen_rtm_conversions::vectorRTMToEigen(param.ud, contact->ud);
+        if(!rtmutil::isAllFinite(param.w)){ std::cerr << "contact w is not finite! " << std::endl; continue; }
+        if(param.w.length() != axis){ std::cerr << "contact w dimension mismatch! " << param.w.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.w, contact->w);
         if(mode.isABCRunning()) contact->onStartAutoBalancer();
         if(mode.isSTRunning()) contact->onStartStabilizer();
         contacts[contact->name] = contact;
@@ -506,6 +481,156 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
         if(activeBodies.find(it->second->body) != activeBodies.end()) {
           activeObjects.push_back(it->second);
         }
+      }
+    }
+
+    bool attentions_changed = false;
+    for(int i=0;i<ports.m_primitiveCommand_.attentionParams.length();i++){
+      actkin_stabilizer::AttentionParamIdl& param = ports.m_primitiveCommand_.attentionParams[i];
+      std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it = attentions.find(std::string(param.name));
+      if(((it == attentions.end()) && (param.remove == false)) ||
+         ((it != attentions.end()) && (param.remove == false) && (param.stateId == it->second->stateId))){
+        // attentionを上書き or 新規追加
+        std::shared_ptr<Attention> attention;
+        attention->name = param.name;
+        attention->stateId = param.stateId + 1; // 1 増える
+        if(std::string(param.obj1) == ""){
+          if(std::string(param.link1) == ""){
+            attention->cog1 = nullptr;
+            attention->link1 = nullptr; // world
+          }else if(std::string(param.link1) == "CM"){
+            attention->cog1 = gaitParam.robot->body;
+            attention->link1 = nullptr; // robotの重心
+          }else{
+            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link1));
+            if(link) {
+              attention->cog1 = nullptr;
+              attention->link1 = link; // robotのlink
+            }else{
+              std::cerr << "attention link is not found! " << param.link1 << std::endl;
+              continue;
+            }
+          }
+        }else{
+          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj1));
+          if(object_it != gaitParam.objects.end()){
+            if(std::string(param.link1) == "CM"){
+              attention->cog1 = object_it->second->body;
+              attention->link1 = nullptr; // objectの重心
+            }else{
+              cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link1));
+              if(link) {
+                attention->cog1 = nullptr;
+                attention->link1 = link; // objectのlink
+              }else{
+                std::cerr << "attention link is not found! " << param.link1 << std::endl;
+                continue;
+              }
+            }
+          }else{
+            std::cerr << "attention object is not found! " << param.obj1 << std::endl;
+            continue;
+          }
+        }
+        if(!rtmutil::isAllFinite(param.localPose1)){
+          std::cerr << "attention localPose1 is not finite! " << std::endl;
+          continue;
+        }
+        cnoid::Position localPose1;
+        eigen_rtm_conversions::poseRTMToEigen(param.localPose1, localPose1);
+        attention->localPose1.reset(localPose1);
+        if(std::string(param.obj2) == ""){
+          if(std::string(param.link2) == ""){
+            attention->cog2 = nullptr;
+            attention->link2 = nullptr; // world
+          }else if(std::string(param.link2) == "CM"){
+            attention->cog2 = gaitParam.robot->body;
+            attention->link2 = nullptr; // robotの重心
+          }else{
+            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link2));
+            if(link) {
+              attention->cog2 = nullptr;
+              attention->link2 = link; // robotのlink
+            }else{
+              std::cerr << "attention link is not found! " << param.link2 << std::endl;
+              continue;
+            }
+          }
+        }else{
+          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj2));
+          if(object_it != gaitParam.objects.end()){
+            if(std::string(param.link2) == "CM"){
+              attention->cog2 = object_it->second->body;
+              attention->link2 = nullptr; // objectの重心
+            }else{
+              cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link2));
+              if(link) {
+                attention->cog2 = nullptr;
+                attention->link2 = link; // objectのlink
+              }else{
+                std::cerr << "attention link is not found! " << param.link2 << std::endl;
+                continue;
+              }
+            }
+          }else{
+            std::cerr << "attention object is not found! " << param.obj2 << std::endl;
+            continue;
+          }
+        }
+        if(!rtmutil::isAllFinite(param.localPose2)){ std::cerr << "attention localPose2 is not finite! " << std::endl; continue; }
+        cnoid::Position localPose2;
+        eigen_rtm_conversions::poseRTMToEigen(param.localPose2, localPose2);
+        attention->localPose2.reset(localPose2);
+        if(!rtmutil::isAllFinite(param.refWrench)){ std::cerr << "attention refWrench is not finite! " << std::endl; continue; }
+        if(param.refWrench.length() != 6){ std::cerr << "attention refWrench dimension mismatch! " << param.refWrench.length() << std::endl; continue; }
+        cnoid::Vector6 refWrench;
+        eigen_rtm_conversions::vectorRTMToEigen(param.refWrench,refWrench);
+        attention->refWrench.reset(refWrench);
+        if(!rtmutil::isAllFinite(param.C)){ std::cerr << "attention C is not finite! " << std::endl; continue; }
+        bool valid = true;
+        for(int row = 0; row < param.C.length(); row++){
+          if(param.C[row].length() != 6) { valid = false; break; }
+        }
+        if(!valid) { std::cerr << "attention C dimension mismatch! " << std::endl; continue; }
+        attention->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(param.C.length(),6);
+        for(int row = 0; row < param.C.length(); row++){
+          for(int col = 0; col < param.C[row].length(); col++){
+            if(param.C[row][col] != 0.0) {
+              attention->C.insert(row,col) = param.C[row][col];
+            }
+          }
+        }
+        if(!rtmutil::isAllFinite(param.ld) || !rtmutil::isAllFinite(param.ud)){ std::cerr << "attention ld/ud is not finite! " << std::endl; continue; }
+        if(param.ld.length() != param.C.length() || param.ud.length() != param.C.length()){ std::cerr << "attention ld/ud dimension mismatch! " << param.ld.length() << " " << param.ud.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.ld, attention->ld);
+        eigen_rtm_conversions::vectorRTMToEigen(param.ud, attention->ud);
+        if(!rtmutil::isAllFinite(param.Kp) || !rtmutil::isAllFinite(param.Dp)){ std::cerr << "attention Kp/Dp is not finite! " << std::endl; continue; }
+        if(param.Kp.length() != param.C.length() || param.Dp.length() != param.C.length()){ std::cerr << "attention Kp/Dp dimension mismatch! " << param.Kp.length() << " " << param.Dp.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.Kp, attention->Kp);
+        eigen_rtm_conversions::vectorRTMToEigen(param.Dp, attention->Dp);
+        if(!rtmutil::isAllFinite(param.limitp)){ std::cerr << "attention limitp is not finite! " << std::endl; continue; }
+        if(param.limitp.length() != param.C.length()){ std::cerr << "attention limitp dimension mismatch! " << param.limitp.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.limitp, attention->limitp);
+        if(!rtmutil::isAllFinite(param.weightp)){ std::cerr << "attention weightp is not finite! " << std::endl; continue; }
+        if(param.weightp.length() != param.C.length()){ std::cerr << "attention weightp dimension mismatch! " << param.weightp.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.weightp, attention->weightp);
+        attention->priority = param.priority;
+        attention->horizon = param.horizon;
+        if(!rtmutil::isAllFinite(param.Kw) || !rtmutil::isAllFinite(param.Dw)){ std::cerr << "attention Kw/Dw is not finite! " << std::endl; continue; }
+        if(param.Kw.length() != param.C.length() || param.Dw.length() != param.C.length()){ std::cerr << "attention Kw/Dw dimension mismatch! " << param.Kw.length() << " " << param.Dw.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.Kw, attention->Kw);
+        eigen_rtm_conversions::vectorRTMToEigen(param.Dw, attention->Dw);
+        if(!rtmutil::isAllFinite(param.limitw)){ std::cerr << "attention limitw is not finite! " << std::endl; continue; }
+        if(param.limitw.length() != param.C.length()){ std::cerr << "attention limitw dimension mismatch! " << param.limitw.length() << std::endl; continue; }
+        eigen_rtm_conversions::vectorRTMToEigen(param.limitw, attention->limitw);
+        if(mode.isABCRunning()) attention->onStartAutoBalancer();
+        if(mode.isSTRunning()) attention->onStartStabilizer();
+        attentions[attention->name] = attention;
+        attentions_changed = true;
+      }else if((it != attentions.end()) && (param.remove == true) && (param.stateId == it->second->stateId)){
+        // attentoniを消去
+        attentions.erase(it);
+        attentions_changed = true;
       }
     }
   }

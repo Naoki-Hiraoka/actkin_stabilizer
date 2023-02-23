@@ -5,15 +5,14 @@
 #include <rtm/idl/ExtendedDataTypes.hh>
 
 namespace rtmutil{
-  template<class T,int elmSize,int elmAlignment>
-  inline bool isAllFinite(const _CORBA_Unbounded_Sequence_w_FixSizeElement<T, elmSize, elmAlignment>& v){
+  inline bool isAllFinite(const _CORBA_Sequence<double>& v){
     for(int i=0;i<v.length();i++){
       if(!std::isfinite(v[i])) return false;
     }
     return true;
   }
-  template<class T>
-  inline bool isAllFinite(const _CORBA_Unbounded_Sequence<T>& v){
+  template<typename T>
+  inline bool isAllFinite(const _CORBA_Sequence<T>& v){
     for(int i=0;i<v.length();i++){
       if(!isAllFinite(v[i])) return false;
     }

@@ -47,13 +47,13 @@ module actkin_stabilizer
     string obj1;
     string link1;
     RTC::Pose3D localPose1; // link1 frame
-    RTC::Pose3D localPose2; // link2 frame. goActualで修正される
-    sequence<double, 6> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
     string obj2;
     string link2;
+    RTC::Pose3D localPose2; // link2 frame. goActualで修正される
+    sequence<double, 6> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
     sequence<sequence<double, 6> > C; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
-    sequence<double> ld;
-    sequence<double> ud;
+    sequence<double> ld; // goActualで修正される
+    sequence<double> ud; // goActualで修正される
     sequence<double> Kp; // - Kp * (C * 位置姿勢 - ld|ud) を、分解加速度制御の目標加速度として使う
     sequence<double> Dp; // - Dp * C * 速度 を、分解加速度制御の目標加速度として使う
     sequence<double> limitp; // Kp * (Cp * 位置姿勢 - ldp|udp)に対するlimit

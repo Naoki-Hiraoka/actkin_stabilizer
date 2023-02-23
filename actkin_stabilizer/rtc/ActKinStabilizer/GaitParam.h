@@ -115,10 +115,10 @@ public:
   cnoid::BodyPtr cog1{nullptr}; // 非nullptrならcog
   cnoid::LinkPtr link1{nullptr}; // nullptrならworld
   cpp_filters::TwoPointInterpolatorSE3 localPose1{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // link1 frame
-  cpp_filters::TwoPointInterpolator<cnoid::Vector6> refWrench{cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
   cnoid::BodyPtr cog2{nullptr}; // 非nullptrならcog
   cnoid::LinkPtr link2{nullptr}; // nullptrならworld
   cpp_filters::TwoPointInterpolatorSE3 localPose2{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // link2 frame
+  cpp_filters::TwoPointInterpolator<cnoid::Vector6> refWrench{cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
   Eigen::SparseMatrix<double,Eigen::RowMajor> C; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
   cnoid::VectorX ld;
   cnoid::VectorX ud;
@@ -174,7 +174,6 @@ public:
   }
   void onStartStabilizer(){
     this->goActual();
-    this->stateId++;
   }
 };
 
