@@ -5,6 +5,7 @@
 #include <cnoid/ValueTree>
 #include <cnoid/EigenUtil>
 #include "MathUtil.h"
+#include "RTMUtil.h"
 #include "CnoidBodyUtil.h"
 #include <limits>
 #include <eigen_rtm_conversions/eigen_rtm_conversions.h>
@@ -31,6 +32,7 @@ ActKinStabilizer::Ports::Ports() :
   m_dqActIn_("dqAct", m_dqAct_),
   m_actImuIn_("actImuIn", m_actImu_),
   m_selfCollisionIn_("selfCollisionIn", m_selfCollision_),
+  m_primitiveCommandIn_("primitiveCommandIn", m_primitiveCommand_),
 
   m_genTauOut_("genTauOut", m_genTau_),
   m_actBasePoseOut_("actBasePoseOut", m_actBasePose_),
@@ -38,6 +40,7 @@ ActKinStabilizer::Ports::Ports() :
   m_actBasePosOut_("actBasePosOut", m_actBasePos_),
   m_actBaseRpyOut_("actBaseRpyOut", m_actBaseRpy_),
   m_objectStatesOut_("objectStatesOut", m_objectStates_),
+  m_primitiveStateOut_("primitiveStateOut", m_primitiveState_),
 
   m_actCogOut_("actCogOut", m_actCog_),
 
@@ -61,12 +64,14 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   this->addInPort("dqAct", this->ports_.m_dqActIn_);
   this->addInPort("actImuIn", this->ports_.m_actImuIn_);
   this->addInPort("selfCollisionIn", this->ports_.m_selfCollisionIn_);
+  this->addInPort("primitiveCommandIn", this->ports_.m_primitiveCommandIn_);
   this->addOutPort("genTauOut", this->ports_.m_genTauOut_);
   this->addOutPort("actBasePoseOut", this->ports_.m_actBasePoseOut_);
   this->addOutPort("actBaseTformOut", this->ports_.m_actBaseTformOut_);
   this->addOutPort("actBasePosOut", this->ports_.m_actBasePosOut_);
   this->addOutPort("actBaseRpyOut", this->ports_.m_actBaseRpyOut_);
   this->addOutPort("objectStatesOut", this->ports_.m_objectStatesOut_);
+  this->addOutPort("primitiveStateOut", this->ports_.m_primitiveStateOut_);
   this->addOutPort("actCogOut", this->ports_.m_actCogOut_);
   this->ports_.m_ActKinStabilizerServicePort_.registerProvider("service0", "ActKinStabilizerService", this->ports_.m_service0_);
   this->addPort(this->ports_.m_ActKinStabilizerServicePort_);
@@ -218,22 +223,22 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
 }
 
 // static function
-bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision){
+bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision, std::unordered_map<std::string, std::shared_ptr<Contact> >& contacts, std::unordered_map<std::string, std::shared_ptr<Attention> >& attentions, std::vector<std::shared_ptr<Object> >& activeObjects, std::vector<std::shared_ptr<Contact> >& activeContacts, std::vector<std::vector<std::shared_ptr<Attention> > >& prioritizedAttentions){
   bool qRef_updated = false;
   if(ports.m_qRefIn_.isNew()){
     ports.m_qRefIn_.read();
     if(ports.m_qRef_.data.length() == refRobotRaw->numJoints()){
-      qRef_updated = true;
-      for(int i=0;i<ports.m_qRef_.data.length();i++){
-        if(std::isfinite(ports.m_qRef_.data[i])) {
+      if(!rtmutil::isAllFinite(ports.m_qRef_.data)){
+        std::cerr << "m_qRef is not finite!" << std::endl;
+      }else{
+        qRef_updated = true;
+        for(int i=0;i<ports.m_qRef_.data.length();i++){
           double q = ports.m_qRef_.data[i];
           double dq = (q - refRobotRaw->joint(i)->q()) / dt; // 指令関節角度はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する. 初回のloopのときに値がとんでしまうが、MODE_IDLE状態なので問題ない
           double ddq = (dq - refRobotRaw->joint(i)->dq()) / dt; // 指令関節角度はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する
           refRobotRaw->joint(i)->q() = q;
           refRobotRaw->joint(i)->dq() = dq;
           refRobotRaw->joint(i)->ddq() = ddq;
-        }else{
-          std::cerr << "m_qRef is not finite!" << std::endl;
         }
       }
     }
@@ -241,15 +246,18 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
   if(ports.m_refTauIn_.isNew()){
     ports.m_refTauIn_.read();
     if(ports.m_refTau_.data.length() == refRobotRaw->numJoints()){
-      for(int i=0;i<ports.m_refTau_.data.length();i++){
-        if(std::isfinite(ports.m_refTau_.data[i])) refRobotRaw->joint(i)->u() = ports.m_refTau_.data[i];
-        else std::cerr << "m_refTau is not finite!" << std::endl;
+      if(!rtmutil::isAllFinite(ports.m_refTau_.data)){
+        std::cerr << "m_refTau is not finite!" << std::endl;
+      }else{
+        for(int i=0;i<ports.m_refTau_.data.length();i++){
+          refRobotRaw->joint(i)->u() = ports.m_refTau_.data[i];
+        }
       }
     }
   }
   if(ports.m_refBasePosIn_.isNew()){
     ports.m_refBasePosIn_.read();
-    if(std::isfinite(ports.m_refBasePos_.data.x) && std::isfinite(ports.m_refBasePos_.data.y) && std::isfinite(ports.m_refBasePos_.data.z)){
+    if(rtmutil::isAllFinite(ports.m_refBasePos_.data)){
       cnoid::Vector3 p; eigen_rtm_conversions::pointRTMToEigen(ports.m_refBasePos_.data, p);
       cnoid::Vector3 v = (p - refRobotRaw->rootLink()->p()) / dt;  // 指令ルート位置はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する. 初回のloopのときに値がとんでしまうが、MODE_IDLE状態なので問題ない
       cnoid::Vector3 dv = (v - refRobotRaw->rootLink()->v()) / dt;  // 指令ルート位置はSequencePlayerなどによって滑らかになっていると仮定し、そのまま微分する
@@ -267,31 +275,36 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
   if(ports.m_qActIn_.isNew()){
     ports.m_qActIn_.read();
     if(ports.m_qAct_.data.length() == actRobotRaw->numJoints()){
-      for(int i=0;i<ports.m_qAct_.data.length();i++){
-        if(std::isfinite(ports.m_qAct_.data[i])) {
+      if(!rtmutil::isAllFinite(ports.m_qAct_.data)){
+        std::cerr << "m_qAct is not finite!" << std::endl;
+      }else{
+        for(int i=0;i<ports.m_qAct_.data.length();i++){
           double q = ports.m_qAct_.data[i];
           double dq = (q - actRobotRaw->joint(i)->q()) / dt; // そのまま微分する. 平滑化はactRobotで行う. 初回のloopや基板を立ち上げ直したときに値がとんでしまうが、MODE_IDLE状態またはサーボオフ状態なので問題ない
           actRobotRaw->joint(i)->q() = q;
           actRobotRaw->joint(i)->q() = dq;
         }
-        else std::cerr << "m_qAct is not finite!" << std::endl;
       }
     }
   }
   if(ports.m_dqActIn_.isNew()){
     ports.m_dqActIn_.read();
 
-    // 制御基板からの関節速度計測値は、エンコーダの値が変わる頻度よりも速い頻度で基板の電流制御をするためにエンコーダの値を平滑化したものなので、必ずしもhrpsysの1制御周期ぶんのエンコーダの値の総変化を表すものではない. そのため、hrpsysのレイヤで関節角度を微分しなおして、その値を関節速度として使う
-    // if(ports.m_dqAct_.data.length() == actRobotRaw->numJoints()){
-    //   for(int i=0;i<ports.m_dqAct_.data.length();i++){
-    //     if(std::isfinite(ports.m_dqAct_.data[i])) actRobotRaw->joint(i)->dq() = ports.m_dqAct_.data[i];
-    //     else  std::cerr << "m_dqAct is not finite!" << std::endl;
-    //   }
-    // }
+    // 制御基板からの関節速度計測値は、エンコーダの値が変わる頻度よりも速い頻度で基板の電流制御をするためにエンコーダの値を平滑化したものなので、必ずしもhrpsysの1制御周期ぶんのエンコーダの値の総変化を表すものではない. そのため、hrpsysのレイヤで関節角度を微分しなおして、その値を関節速度として使う方がよい場合がある.
+    // dqActのポートが繋がっていればdqActを使い、つながっていなければqActを微分したものをつかう
+    if(ports.m_dqAct_.data.length() == actRobotRaw->numJoints()){
+      if(!rtmutil::isAllFinite(ports.m_dqAct_.data)){
+        std::cerr << "m_dqAct is not finite!" << std::endl;
+      }else{
+        for(int i=0;i<ports.m_dqAct_.data.length();i++){
+          actRobotRaw->joint(i)->dq() = ports.m_dqAct_.data[i];
+        }
+      }
+    }
   }
   if(ports.m_actImuIn_.isNew()){
     ports.m_actImuIn_.read();
-    if(std::isfinite(ports.m_actImu_.data.r) && std::isfinite(ports.m_actImu_.data.p) && std::isfinite(ports.m_actImu_.data.y)){
+    if(rtmutil::isAllFinite(ports.m_actImu_.data)){
       actRobotRaw->calcForwardKinematics();
       cnoid::RateGyroSensorPtr imu = actRobotRaw->findDevice<cnoid::RateGyroSensor>("gyrometer");
       cnoid::Matrix3 imuR = imu->link()->R() * imu->R_local();
@@ -301,7 +314,7 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
       std::cerr << "m_actImu is not finite!" << std::endl;
     }
   }
-  actRobotRaw->calcForwardKinematics();
+  // actRobotRaw->calcForwardKinematics(); // actRobotRawのFKは不要
 
 
   if(ports.m_selfCollisionIn_.isNew()) {
@@ -309,16 +322,10 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
     selfCollision.resize(ports.m_selfCollision_.data.length());
     for (int i=0; i<selfCollision.size(); i++){
       if(gaitParam.robot->body->link(std::string(ports.m_selfCollision_.data[i].link1)) &&
-         std::isfinite(ports.m_selfCollision_.data[i].point1.x) &&
-         std::isfinite(ports.m_selfCollision_.data[i].point1.y) &&
-         std::isfinite(ports.m_selfCollision_.data[i].point1.z) &&
+         rtmutil::isAllFinite(ports.m_selfCollision_.data[i].point1) &&
          gaitParam.robot->body->link(std::string(ports.m_selfCollision_.data[i].link2)) &&
-         std::isfinite(ports.m_selfCollision_.data[i].point2.x) &&
-         std::isfinite(ports.m_selfCollision_.data[i].point2.y) &&
-         std::isfinite(ports.m_selfCollision_.data[i].point2.z) &&
-         std::isfinite(ports.m_selfCollision_.data[i].direction21.x) &&
-         std::isfinite(ports.m_selfCollision_.data[i].direction21.y) &&
-         std::isfinite(ports.m_selfCollision_.data[i].direction21.z) &&
+         rtmutil::isAllFinite(ports.m_selfCollision_.data[i].point2) &&
+         rtmutil::isAllFinite(ports.m_selfCollision_.data[i].direction21) &&
          std::isfinite(ports.m_selfCollision_.data[i].distance)){
         selfCollision[i].link1 = gaitParam.robot->body->link(std::string(ports.m_selfCollision_.data[i].link1));
         eigen_rtm_conversions::pointRTMToEigen(ports.m_selfCollision_.data[i].point1, selfCollision[i].point1);
@@ -330,6 +337,175 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
         std::cerr << "m_selfCollision is not finite or has unknown link name!" << std::endl;
         selfCollision.resize(0);
         break;
+      }
+    }
+  }
+
+
+  if(ports.m_primitiveCommandIn_.isNew()){
+    ports.m_primitiveCommandIn_.read();
+
+    bool contacts_changed = false;
+    for(int i=0;i<ports.m_primitiveCommand_.contactParams.length();i++){
+      actkin_stabilizer::ContactParamIdl& param = ports.m_primitiveCommand_.contactParams[i];
+      std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it = contacts.find(std::string(param.name));
+      if(((it == contacts.end()) && (param.remove == false)) ||
+         ((it != contacts.end()) && (param.remove == false) && (param.stateId == it->second->stateId))){
+        // contactを上書き or 新規追加
+        std::shared_ptr<Contact> contact;
+        contact->name = param.name;
+        contact->stateId = param.stateId + 1; // 1 増える
+        if(std::string(param.obj1) == ""){
+          if(std::string(param.link1) == ""){
+            contact->link1 = nullptr; // world
+          }else{
+            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link1));
+            if(link) {
+              contact->link1 = link; // robotのlink
+            }else{
+              std::cerr << "contact link is not found! " << param.link1 << std::endl;
+              continue;
+            }
+          }
+        }else{
+          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj1));
+          if(object_it != gaitParam.objects.end()){
+            cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link1));
+            if(link) {
+              contact->link1 = link; // objectのlink
+            }else{
+              std::cerr << "contact link is not found! " << param.link1 << std::endl;
+              continue;
+            }
+          }else{
+            std::cerr << "contact object is not found! " << param.obj1 << std::endl;
+            continue;
+          }
+        }
+        if(!rtmutil::isAllFinite(param.localPose1)){
+          std::cerr << "contact localPose1 is not finite! " << std::endl;
+          continue;
+        }
+        eigen_rtm_conversions::poseRTMToEigen(param.localPose1, contact->localPose1);
+        if(std::string(param.obj2) == ""){
+          if(std::string(param.link2) == ""){
+            contact->link2 = nullptr; // world
+          }else{
+            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link2));
+            if(link) {
+              contact->link2 = link; // robotのlink
+            }else{
+              std::cerr << "contact link is not found! " << param.link2 << std::endl;
+              continue;
+            }
+          }
+        }else{
+          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj2));
+          if(object_it != gaitParam.objects.end()){
+            cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link2));
+            if(link) {
+              contact->link2 = link; // objectのlink
+            }else{
+              std::cerr << "contact link is not found! " << param.link2 << std::endl;
+              continue;
+            }
+          }else{
+            std::cerr << "contact object is not found! " << param.obj2 << std::endl;
+            continue;
+          }
+        }
+        int axis = 0; for(int a=0;a<param.axis.length();a++) if(param.axis[i]) axis++;
+        contact->S = Eigen::SparseMatrix<double,Eigen::RowMajor>(axis,6);
+        axis = 0;
+        for(int a=0;a<param.axis.length();a++) {
+          if(param.axis[i]) {
+            contact->S.insert(axis,i) = 1.0;
+            axis++;
+          }
+        }
+        if(!rtmutil::isAllFinite(param.C)){
+          std::cerr << "contact C is not finite! " << std::endl;
+          continue;
+        }
+        bool valid = true;
+        for(int row = 0; row < param.C.length(); row++){
+          if(param.C[row].length() != axis) { valid = false; break; }
+        }
+        if(!valid) {
+          std::cerr << "contact C dimension mismatch! " << std::endl;
+          continue;
+        }
+        contact->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(param.C.length(),axis);
+        for(int row = 0; row < param.C.length(); row++){
+          for(int col = 0; col < param.C[row].length(); col++){
+            if(param.C[row][col] != 0.0) {
+              contact->C.insert(row,col) = param.C[row][col];
+            }
+          }
+        }
+        if(!rtmutil::isAllFinite(param.ld) || !rtmutil::isAllFinite(param.ud)){
+          std::cerr << "contact ld/ud is not finite! " << std::endl;
+          continue;
+        }
+        if(param.ld.length() != param.C.length() || param.ud.length() != param.C.length()){
+          std::cerr << "contact ld/ud dimension mismatch! " << param.ld.length() << " " << param.ud.length() << std::endl;
+          continue;
+        }
+        contact->ld = cnoid::VectorX(param.ld.length());
+        contact->ud = cnoid::VectorX(param.ud.length());
+        for(int row = 0; row < param.C.length(); row++){
+          contact->ld[row] = param.ld[row];
+          contact->ud[row] = param.ud[row];
+        }
+        if(!rtmutil::isAllFinite(param.w)){
+          std::cerr << "contact w is not finite! " << std::endl;
+          continue;
+        }
+        if(param.w.length() != axis){
+          std::cerr << "contact w dimension mismatch! " << param.w.length() << std::endl;
+          continue;
+        }
+        contact->w = cnoid::VectorX(param.w.length());
+        for(int row = 0; row < axis; row++){
+          contact->w[row] = param.w[row];
+        }
+        if(mode.isABCRunning()) contact->onStartAutoBalancer();
+        if(mode.isSTRunning()) contact->onStartStabilizer();
+        contacts[contact->name] = contact;
+        contacts_changed = true;
+      }else if((it != contacts.end()) && (param.remove == true) && (param.stateId == it->second->stateId)){
+        // contactを消去
+        contacts.erase(it);
+        contacts_changed = true;
+      }
+    }
+    if(contacts_changed){
+      activeObjects.clear();
+      activeContacts.clear();
+      std::unordered_set<cnoid::BodyPtr> activeBodies; // robotとcontactを介してつながっているobjects.
+      std::vector<std::shared_ptr<Contact> > tmpContacts; tmpContacts.reserve(contacts.size());
+      std::vector<std::shared_ptr<Contact> > nextTmpContacts; nextTmpContacts.reserve(contacts.size());
+      for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it = contacts.begin(); it != contacts.end(); it++) nextTmpContacts.push_back(it->second);
+      while(tmpContacts.size() != nextTmpContacts.size()){
+        tmpContacts = nextTmpContacts;
+        nextTmpContacts.clear();
+        for(int i=0;i<tmpContacts.size();i++){
+          if(tmpContacts[i]->link1 &&
+             ((tmpContacts[i]->link1->body() == gaitParam.robot->body) || (activeBodies.find(tmpContacts[i]->link1->body()) != activeBodies.end()))){
+            if(tmpContacts[i]->link2 && tmpContacts[i]->link2->body() != gaitParam.robot->body) activeBodies.insert(tmpContacts[i]->link2->body());
+            activeContacts.push_back(tmpContacts[i]);
+          }else if(tmpContacts[i]->link2 &&
+                   ((tmpContacts[i]->link2->body() == gaitParam.robot->body) || (activeBodies.find(tmpContacts[i]->link2->body()) != activeBodies.end()))){
+            if(tmpContacts[i]->link1 && tmpContacts[i]->link1->body() != gaitParam.robot->body) activeBodies.insert(tmpContacts[i]->link1->body());
+          }else{
+            nextTmpContacts.push_back(tmpContacts[i]);
+          }
+        }
+      }
+      for(std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator it = gaitParam.objects.begin(); it != gaitParam.objects.end(); it++){
+        if(activeBodies.find(it->second->body) != activeBodies.end()) {
+          activeObjects.push_back(it->second);
+        }
       }
     }
   }
@@ -461,8 +637,9 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   this->wrenchDistributor_.onExecute(dt);
 
 
-  if(!ActKinStabilizer::readInPortData(dt, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.selfCollision)) return RTC::RTC_OK;  // qRef が届かなければ何もしない
-
+  if(!ActKinStabilizer::readInPortData(dt, this->gaitParam_, this->mode_, this->ports_, this->gaitParam_.refRobotRaw, this->gaitParam_.actRobotRaw, this->gaitParam_.selfCollision, this->gaitParam_.contacts, this->gaitParam_.attentions, this->gaitParam_.activeObjects, this->gaitParam_.activeContacts, this->gaitParam_.prioritizedAttentions)){
+    return RTC::RTC_OK;  // qRef が届かなければ何もしない
+  }
 
   if(this->mode_.isABCRunning()) {
     if(this->mode_.isSyncToABCInit()){ // startAutoBalancer直後の初回. 内部パラメータのリセット

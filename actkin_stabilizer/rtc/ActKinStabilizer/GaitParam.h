@@ -4,6 +4,7 @@
 #include <sys/time.h>
 #include <cnoid/EigenTypes>
 #include <vector>
+#include <memory>
 #include <unordered_map>
 #include <limits>
 #include <cpp_filters/TwoPointInterpolator.h>
@@ -220,6 +221,7 @@ public:
 
   // cache
   std::vector<std::shared_ptr<Object> > activeObjects; // contactによってworldを介さずにrobotとつながっているobjects. 状態推定・RAC・WDで考慮する.
+  std::vector<std::shared_ptr<Contact> > activeContacts; // contactによってworldを介さずにrobotとつながっているcontacts. 状態推定・RAC・WDで考慮する.
   std::vector<std::vector<std::shared_ptr<Attention> > > prioritizedAttentions; // attentionsを優先度順に並び替えたもの
 
 

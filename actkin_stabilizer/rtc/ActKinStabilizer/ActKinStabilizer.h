@@ -1,9 +1,9 @@
 #ifndef ActKinStabilizer_H
 #define ActKinStabilizer_H
 
-#include <memory>
 #include <time.h>
 #include <mutex>
+#include <unordered_set>
 
 #include <rtm/idl/BasicDataType.hh>
 #include <rtm/idl/ExtendedDataTypes.hh>
@@ -79,6 +79,8 @@ protected:
     RTC::InPort<RTC::TimedOrientation3D> m_actImuIn_;
     collision_checker_msgs::TimedCollisionSeq m_selfCollision_; // generate frame. genRobotの自己干渉の最近傍点
     RTC::InPort<collision_checker_msgs::TimedCollisionSeq> m_selfCollisionIn_;
+    actkin_stabilizer::PrimitiveStateIdl m_primitiveCommand_;
+    RTC::InPort<actkin_stabilizer::PrimitiveStateIdl> m_primitiveCommandIn_;
 
     RTC::TimedDoubleSeq m_genTau_;
     RTC::OutPort<RTC::TimedDoubleSeq> m_genTauOut_;
@@ -92,6 +94,8 @@ protected:
     RTC::OutPort<RTC::TimedOrientation3D> m_actBaseRpyOut_; // for old RTCs
     actkin_stabilizer::ObjectStateIdlSeq m_objectStates_; // Generate World frame
     RTC::OutPort<actkin_stabilizer::ObjectStateIdlSeq> m_objectStatesOut_;
+    actkin_stabilizer::PrimitiveStateIdl m_primitiveState_;
+    RTC::OutPort<actkin_stabilizer::PrimitiveStateIdl> m_primitiveStateOut_;
 
     ActKinStabilizerService_impl m_service0_;
     RTC::CorbaPort m_ActKinStabilizerServicePort_;
@@ -202,7 +206,7 @@ protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
 
-  static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision);
+  static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision, std::unordered_map<std::string, std::shared_ptr<Contact> >& contacts, std::unordered_map<std::string, std::shared_ptr<Attention> >& attentions, std::vector<std::shared_ptr<Object> >& activeObjects, std::vector<std::shared_ptr<Contact> >& activeContacts, std::vector<std::vector<std::shared_ptr<Attention> > >& prioritizedAttentions);
   static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter);
 };
 
