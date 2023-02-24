@@ -11,6 +11,7 @@
 #include <cpp_filters/FirstOrderLowPassFilter.h>
 #include <joint_limit_table/JointLimitTable.h>
 #include "FootGuidedController.h"
+#include <actkin_stabilizer/idl/ActKinStabilizerService.hh>
 
 class Object {
 public:
@@ -60,40 +61,7 @@ public:
   cnoid::VectorX w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
 
 public:
-  Contact(){
-    // とりあえず足裏のようなsurface contactで初期化
-
-    S.resize(6,6);
-    S.setIdentity();
-
-    // 50<  0  0  1  0  0  0 < 1e10
-    // 0 <  1  0 mt  0  0  0 < 1e10
-    // 0 < -1  0 mt  0  0  0 < 1e10
-    // 0 <  0  1 mt  0  0  0 < 1e10
-    // 0 <  0 -1 mt  0  0  0 < 1e10
-    // 0 <  0  0 xu  0  1  0 < 1e10
-    // 0 <  0  0-xl  0 -1  0 < 1e10
-    // 0 <  0  0 yu -1  0  0 < 1e10
-    // 0 <  0  0-yl  1  0  0 < 1e10
-    // 0 <  0  0 mr  0  0  1 < 1e10
-    // 0 <  0  0 mr  0  0 -1 < 1e10
-    const double mt=0.5, mr=0.05, xu=0.115, xl=-0.095, yu=0.065, yl=-0.065;
-    ld.resize(11); C.resize(11,6); ud.resize(11);
-    ld[0] = 50.0; C.insert(0,2) = 1.0; ud[0] = 1e10;
-    ld[1] = 0.0; C.insert(1,0) = 1.0; C.insert(1,2) = mt; ud[1] = 1e10;
-    ld[2] = 0.0; C.insert(2,0) = -1.0; C.insert(2,2) = mt; ud[2] = 1e10;
-    ld[3] = 0.0; C.insert(3,1) = 1.0; C.insert(3,2) = mt; ud[3] = 1e10;
-    ld[4] = 0.0; C.insert(4,1) = -1.0; C.insert(4,2) = mt; ud[4] = 1e10;
-    ld[5] = 0.0; C.insert(5,2) = xu; C.insert(5,4) = 1.0; ud[5] = 1e10;
-    ld[6] = 0.0; C.insert(6,2) = -xl; C.insert(6,4) = -1.0; ud[6] = 1e10;
-    ld[7] = 0.0; C.insert(7,2) = yu; C.insert(7,3) = -1.0; ud[7] = 1e10;
-    ld[8] = 0.0; C.insert(8,2) = -yl; C.insert(8,3) = 1.0; ud[8] = 1e10;
-    ld[9] = 0.0; C.insert(9,0) = mr; C.insert(9,5) = 1.0; ud[9] = 1e10;
-    ld[10] = 0.0; C.insert(10,0) = mr; C.insert(10,5) = -1.0; ud[10] = 1e10;
-
-    w.resize(6);
-    w << 1e2, 1e2, 1e0, 1e2, 1e2, 1e3;
-  }
+  bool initializeFromIdl(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const actkin_stabilizer::ContactParamIdl& idl); // idlから初期化
   void onExecute(double dt){
   }
   void onStartAutoBalancer(){
@@ -112,7 +80,7 @@ public:
   // from Inport
   std::string name;
   unsigned long stateId{0}; // 現在のstateId以外のstateIdを伴う指令は無視する
-  cnoid::BodyPtr cog1{nullptr}; // 非nullptrならcog
+  cnoid::BodyPtr cog1{nullptr}; // 非nullptrならcog. 片方がcogなら、もう片方はworld以外不可
   cnoid::LinkPtr link1{nullptr}; // nullptrならworld
   cpp_filters::TwoPointInterpolatorSE3 localPose1{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // link1 frame
   cnoid::BodyPtr cog2{nullptr}; // 非nullptrならcog
@@ -120,8 +88,8 @@ public:
   cpp_filters::TwoPointInterpolatorSE3 localPose2{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // link2 frame
   cpp_filters::TwoPointInterpolator<cnoid::Vector6> refWrench{cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
   Eigen::SparseMatrix<double,Eigen::RowMajor> C; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
-  cnoid::VectorX ld;
-  cnoid::VectorX ud;
+  cpp_filters::TwoPointInterpolator<cnoid::VectorX> ld{cnoid::VectorX::Zero(0),cnoid::VectorX::Zero(0),cnoid::VectorX::Zero(0),cpp_filters::HOFFARBIB};
+  cpp_filters::TwoPointInterpolator<cnoid::VectorX> ud{cnoid::VectorX::Zero(0),cnoid::VectorX::Zero(0),cnoid::VectorX::Zero(0),cpp_filters::HOFFARBIB};
   cnoid::VectorX Kp; // - Kp * (C * 位置姿勢 - ld|ud) を、分解加速度制御の目標加速度として使う
   cnoid::VectorX Dp; // - Dp * C * 速度 を、分解加速度制御の目標加速度として使う
   cnoid::VectorX limitp; // Kp * (C * 位置姿勢 - ld|ud)に対するlimit
@@ -134,23 +102,19 @@ public:
   // 重心の場合、回転成分は無視する. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
 
 public:
-  Attention(){
-    // とりあえず6軸拘束で初期化
-    C.resize(6,6); C.setIdentity(); ld.resize(6); ld.setZero(); ud.resize(6); ud.setZero();
-    Kp.resize(6); Kp<<50, 50, 50, 20, 20, 20; Dp.resize(6); Dp<<10, 10, 10, 10, 10, 10;
-    limitp.resize(6); limitp<<5.0, 5.0, 5.0, 5.0, 5.0, 5.0; weightp.resize(6); weightp<<1.0,1.0,1.0,1.0,1.0,1.0;
-    Kw.resize(6); Kw.setZero(); Kw.resize(6); Kw.setZero();
-    limitw.resize(6); limitw.setZero();
-  }
+  bool initializeFromIdl(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const actkin_stabilizer::AttentionParamIdl& idl); // idlから初期化
+  bool updateFromIdl(const actkin_stabilizer::AttentionDataIdl& idl); // idlから更新
   void onExecute(double dt){
     this->localPose1.interpolate(dt);
     this->localPose2.interpolate(dt);
     this->refWrench.interpolate(dt);
+    this->ld.interpolate(dt);
+    this->ud.interpolate(dt);
   }
   void goActual(bool clearWrench=false){
     // localPose2またはld/udを, Cを満たすように修正する.
     bool has_inequality = false;
-    for(int i = 0; i < ld.size(); i++) if(std::abs(ud[i]-ld[i])>1e-4) has_inequality = true;
+    for(int i = 0; i < ld.value().size(); i++) if(std::abs(ud.value()[i]-ld.value()[i])>1e-4) has_inequality = true;
     if(has_inequality){
       cnoid::Position pose1 = this->link1 ? this->link1->T() * this->localPose1.value() : this->localPose1.value();
       cnoid::Position pose2 = this->link1 ? this->link2->T() * this->localPose2.value() : this->localPose2.value();
@@ -160,9 +124,9 @@ public:
       Eigen::AngleAxisd R12{pose12.linear()};
       error12.tail<3>() = R12.angle() * R12.axis();
       cnoid::VectorX value = this->C * error12;
-      for(int i = 0; i < ld.size(); i++) {
-        if(value[i]<ld[i]) ld[i] = value[i];
-        if(value[i]>ud[i]) ud[i] = value[i];
+      for(int i = 0; i < ld.value().size(); i++) {
+        if(value[i]<ld.value()[i]) ld.value()[i] = value[i];
+        if(value[i]>ud.value()[i]) ud.value()[i] = value[i];
       }
     }else{
       cnoid::Position pose1 = this->link1 ? this->link1->T() * this->localPose1.value() : this->localPose1.value();
@@ -221,7 +185,11 @@ public:
   // cache
   std::vector<std::shared_ptr<Object> > activeObjects; // contactによってworldを介さずにrobotとつながっているobjects. 状態推定・RAC・WDで考慮する.
   std::vector<std::shared_ptr<Contact> > activeContacts; // contactによってworldを介さずにrobotとつながっているcontacts. 状態推定・RAC・WDで考慮する.
+  static void calcActiveObjectsContacts(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const std::unordered_map<std::string, std::shared_ptr<Contact> >& contacts,
+                                        std::vector<std::shared_ptr<Object> >& activeObjects, std::vector<std::shared_ptr<Contact> >& activeContacts);
   std::vector<std::vector<std::shared_ptr<Attention> > > prioritizedAttentions; // attentionsを優先度順に並び替えたもの
+  static void calcPrioritizedAttentions(const std::unordered_map<std::string, std::shared_ptr<Attention> >& attentions,
+                                        std::vector<std::vector<std::shared_ptr<Attention> > >& prioritizedAttentions);
 
 
   // ActToGenFrameConverter

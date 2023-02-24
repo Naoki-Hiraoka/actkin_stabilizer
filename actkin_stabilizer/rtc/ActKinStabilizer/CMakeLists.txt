@@ -11,7 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
   prioritized_inverse_kinematics_solver
   cpp_filters
   ik_constraint_joint_limit_table
-  hrpsys_ros_bridge
   joint_limit_table
   collision_checker_msgs
   auto_stabilizer_msgs
@@ -41,6 +40,7 @@ add_library(ActKinStabilizer SHARED
   ResolvedAccelerationController.cpp
   WrenchDistributor.cpp
   MathUtil.cpp
+  GaitParam.cpp
   )
 target_link_libraries(ActKinStabilizer
   ${catkin_LIBRARIES}

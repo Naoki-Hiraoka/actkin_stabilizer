@@ -174,12 +174,48 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         contact->name = name;
         contact->link1 = this->gaitParam_.robot->body->link(parentLink);
         contact->localPose1 = localT;
+        // とりあえず足裏のようなsurface contactで初期化
+        contact->S.resize(6,6);
+        contact->S.setIdentity();
+        // 50<  0  0  1  0  0  0 < 1e10
+        // 0 <  1  0 mt  0  0  0 < 1e10
+        // 0 < -1  0 mt  0  0  0 < 1e10
+        // 0 <  0  1 mt  0  0  0 < 1e10
+        // 0 <  0 -1 mt  0  0  0 < 1e10
+        // 0 <  0  0 xu  0  1  0 < 1e10
+        // 0 <  0  0-xl  0 -1  0 < 1e10
+        // 0 <  0  0 yu -1  0  0 < 1e10
+        // 0 <  0  0-yl  1  0  0 < 1e10
+        // 0 <  0  0 mr  0  0  1 < 1e10
+        // 0 <  0  0 mr  0  0 -1 < 1e10
+        const double mt=0.5, mr=0.05, xu=0.115, xl=-0.095, yu=0.065, yl=-0.065;
+        contact->ld.resize(11); contact->C.resize(11,6); contact->ud.resize(11);
+        contact->ld[0] = 50.0; contact->C.insert(0,2) = 1.0; contact->ud[0] = 1e10;
+        contact->ld[1] = 0.0; contact->C.insert(1,0) = 1.0; contact->C.insert(1,2) = mt; contact->ud[1] = 1e10;
+        contact->ld[2] = 0.0; contact->C.insert(2,0) = -1.0; contact->C.insert(2,2) = mt; contact->ud[2] = 1e10;
+        contact->ld[3] = 0.0; contact->C.insert(3,1) = 1.0; contact->C.insert(3,2) = mt; contact->ud[3] = 1e10;
+        contact->ld[4] = 0.0; contact->C.insert(4,1) = -1.0; contact->C.insert(4,2) = mt; contact->ud[4] = 1e10;
+        contact->ld[5] = 0.0; contact->C.insert(5,2) = xu; contact->C.insert(5,4) = 1.0; contact->ud[5] = 1e10;
+        contact->ld[6] = 0.0; contact->C.insert(6,2) = -xl; contact->C.insert(6,4) = -1.0; contact->ud[6] = 1e10;
+        contact->ld[7] = 0.0; contact->C.insert(7,2) = yu; contact->C.insert(7,3) = -1.0; contact->ud[7] = 1e10;
+        contact->ld[8] = 0.0; contact->C.insert(8,2) = -yl; contact->C.insert(8,3) = 1.0; contact->ud[8] = 1e10;
+        contact->ld[9] = 0.0; contact->C.insert(9,0) = mr; contact->C.insert(9,5) = 1.0; contact->ud[9] = 1e10;
+        contact->ld[10] = 0.0; contact->C.insert(10,0) = mr; contact->C.insert(10,5) = -1.0; contact->ud[10] = 1e10;
+        contact->w.resize(6);
+        contact->w << 1e2, 1e2, 1e0, 1e2, 1e2, 1e3;
+
         this->gaitParam_.contacts[contact->name] = contact;
       }else{
         std::shared_ptr<Attention> attention;
         attention->name = name;
         attention->link1 = this->gaitParam_.robot->body->link(parentLink);
         attention->localPose1.reset(localT);
+        // とりあえず6軸拘束で初期化
+        attention->C.resize(6,6); attention->C.setIdentity(); attention->ld.reset(cnoid::VectorX::Zero(6), cnoid::VectorX::Zero(6), cnoid::VectorX::Zero(6)); attention->ud.reset(cnoid::VectorX::Zero(6), cnoid::VectorX::Zero(6), cnoid::VectorX::Zero(6));
+        attention->Kp.resize(6); attention->Kp<<50, 50, 50, 20, 20, 20; attention->Dp.resize(6); attention->Dp<<10, 10, 10, 10, 10, 10;
+        attention->limitp.resize(6); attention->limitp<<5.0, 5.0, 5.0, 5.0, 5.0, 5.0; attention->weightp.resize(6); attention->weightp<<1.0,1.0,1.0,1.0,1.0,1.0;
+        attention->Kw.resize(6); attention->Kw.setZero(); attention->Kw.resize(6); attention->Kw.setZero();
+        attention->limitw.resize(6); attention->limitw.setZero();
         this->gaitParam_.attentions[attention->name] = attention;
       }
       idx++;
@@ -191,6 +227,11 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         std::shared_ptr<Attention> attention;
         attention->name = "cog";
         attention->cog2 = this->gaitParam_.robot->body;
+        attention->C.resize(3,6); for(int i=0;i<3;i++) attention->C.insert(i,i)=1.0; attention->ld.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3)); attention->ud.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3));
+        attention->Kp.resize(3); attention->Kp<<50, 50, 50; attention->Dp.resize(3); attention->Dp<<10, 10, 10;
+        attention->limitp.resize(3); attention->limitp<<5.0, 5.0, 5.0; attention->weightp.resize(3); attention->weightp<<1.0,1.0,1.0;
+        attention->Kw.resize(3); attention->Kw.setZero(); attention->Kw.resize(3); attention->Kw.setZero();
+        attention->limitw.resize(3); attention->limitw.setZero();
         // TODO gain, priority
         this->gaitParam_.attentions[attention->name] = attention;
       }
@@ -200,7 +241,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         attention->name = "root";
         attention->link1 = this->gaitParam_.robot->body->rootLink();
         attention->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(3,6); for(int i=0;i<3;i++) attention->C.insert(3+i,i)=1.0;
-        attention->ld.resize(3); attention->ld.setZero(); attention->ud.resize(3); attention->ud.setZero();
+        attention->ld.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3)); attention->ud.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3));
         attention->Kp.resize(3); attention->Kp<<100, 100, 100; attention->Dp.resize(3); attention->Dp<<25, 25, 25;
         attention->limitp.resize(3); attention->limitp<<5.0, 5.0, 5.0; attention->weightp.resize(3); attention->weightp<<1.0,1.0,1.0;
         attention->Kw.resize(3); attention->Kw.setZero(); attention->Kw.resize(3); attention->Kw.setZero();
@@ -208,6 +249,11 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         // TODO gain, priority
         this->gaitParam_.attentions[attention->name] = attention;
       }
+
+      GaitParam::calcActiveObjectsContacts(this->gaitParam_.robot, this->gaitParam_.objects, this->gaitParam_.contacts, // input
+                                           this->gaitParam_.activeObjects, this->gaitParam_.activeContacts); // output
+      GaitParam::calcPrioritizedAttentions(this->gaitParam_.attentions, // input
+                                           this->gaitParam_.prioritizedAttentions); // output
     }
   }
 
@@ -352,98 +398,8 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
       if(((it == contacts.end()) && (param.remove == false)) ||
          ((it != contacts.end()) && (param.remove == false) && (param.stateId == it->second->stateId))){
         // contactを上書き or 新規追加
-        std::shared_ptr<Contact> contact;
-        contact->name = param.name;
-        contact->stateId = param.stateId + 1; // 1 増える
-        if(std::string(param.obj1) == ""){
-          if(std::string(param.link1) == ""){
-            contact->link1 = nullptr; // world
-          }else{
-            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link1));
-            if(link) {
-              contact->link1 = link; // robotのlink
-            }else{
-              std::cerr << "contact link is not found! " << param.link1 << std::endl;
-              continue;
-            }
-          }
-        }else{
-          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj1));
-          if(object_it != gaitParam.objects.end()){
-            cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link1));
-            if(link) {
-              contact->link1 = link; // objectのlink
-            }else{
-              std::cerr << "contact link is not found! " << param.link1 << std::endl;
-              continue;
-            }
-          }else{
-            std::cerr << "contact object is not found! " << param.obj1 << std::endl;
-            continue;
-          }
-        }
-        if(!rtmutil::isAllFinite(param.localPose1)){
-          std::cerr << "contact localPose1 is not finite! " << std::endl;
-          continue;
-        }
-        eigen_rtm_conversions::poseRTMToEigen(param.localPose1, contact->localPose1);
-        if(std::string(param.obj2) == ""){
-          if(std::string(param.link2) == ""){
-            contact->link2 = nullptr; // world
-          }else{
-            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link2));
-            if(link) {
-              contact->link2 = link; // robotのlink
-            }else{
-              std::cerr << "contact link is not found! " << param.link2 << std::endl;
-              continue;
-            }
-          }
-        }else{
-          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj2));
-          if(object_it != gaitParam.objects.end()){
-            cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link2));
-            if(link) {
-              contact->link2 = link; // objectのlink
-            }else{
-              std::cerr << "contact link is not found! " << param.link2 << std::endl;
-              continue;
-            }
-          }else{
-            std::cerr << "contact object is not found! " << param.obj2 << std::endl;
-            continue;
-          }
-        }
-        int axis = 0; for(int a=0;a<param.axis.length();a++) if(param.axis[i]) axis++;
-        contact->S = Eigen::SparseMatrix<double,Eigen::RowMajor>(axis,6);
-        axis = 0;
-        for(int a=0;a<param.axis.length();a++) {
-          if(param.axis[i]) {
-            contact->S.insert(axis,i) = 1.0;
-            axis++;
-          }
-        }
-        if(!rtmutil::isAllFinite(param.C)){ std::cerr << "contact C is not finite! " << std::endl; continue; }
-        bool valid = true;
-        for(int row = 0; row < param.C.length(); row++){
-          if(param.C[row].length() != axis) { valid = false; break; }
-        }
-        if(!valid) { std::cerr << "contact C dimension mismatch! " << std::endl; continue; }
-        contact->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(param.C.length(),axis);
-        for(int row = 0; row < param.C.length(); row++){
-          for(int col = 0; col < param.C[row].length(); col++){
-            if(param.C[row][col] != 0.0) {
-              contact->C.insert(row,col) = param.C[row][col];
-            }
-          }
-        }
-        if(!rtmutil::isAllFinite(param.ld) || !rtmutil::isAllFinite(param.ud)){ std::cerr << "contact ld/ud is not finite! " << std::endl; continue; }
-        if(param.ld.length() != param.C.length() || param.ud.length() != param.C.length()){ std::cerr << "contact ld/ud dimension mismatch! " << param.ld.length() << " " << param.ud.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.ld, contact->ld);
-        eigen_rtm_conversions::vectorRTMToEigen(param.ud, contact->ud);
-        if(!rtmutil::isAllFinite(param.w)){ std::cerr << "contact w is not finite! " << std::endl; continue; }
-        if(param.w.length() != axis){ std::cerr << "contact w dimension mismatch! " << param.w.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.w, contact->w);
+        std::shared_ptr<Contact> contact = std::make_shared<Contact>();
+        if(!contact->initializeFromIdl(gaitParam.robot, gaitParam.objects, param)) continue;
         if(mode.isABCRunning()) contact->onStartAutoBalancer();
         if(mode.isSTRunning()) contact->onStartStabilizer();
         contacts[contact->name] = contact;
@@ -455,33 +411,8 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
       }
     }
     if(contacts_changed){
-      activeObjects.clear();
-      activeContacts.clear();
-      std::unordered_set<cnoid::BodyPtr> activeBodies; // robotとcontactを介してつながっているobjects.
-      std::vector<std::shared_ptr<Contact> > tmpContacts; tmpContacts.reserve(contacts.size());
-      std::vector<std::shared_ptr<Contact> > nextTmpContacts; nextTmpContacts.reserve(contacts.size());
-      for(std::unordered_map<std::string, std::shared_ptr<Contact> >::iterator it = contacts.begin(); it != contacts.end(); it++) nextTmpContacts.push_back(it->second);
-      while(tmpContacts.size() != nextTmpContacts.size()){
-        tmpContacts = nextTmpContacts;
-        nextTmpContacts.clear();
-        for(int i=0;i<tmpContacts.size();i++){
-          if(tmpContacts[i]->link1 &&
-             ((tmpContacts[i]->link1->body() == gaitParam.robot->body) || (activeBodies.find(tmpContacts[i]->link1->body()) != activeBodies.end()))){
-            if(tmpContacts[i]->link2 && tmpContacts[i]->link2->body() != gaitParam.robot->body) activeBodies.insert(tmpContacts[i]->link2->body());
-            activeContacts.push_back(tmpContacts[i]);
-          }else if(tmpContacts[i]->link2 &&
-                   ((tmpContacts[i]->link2->body() == gaitParam.robot->body) || (activeBodies.find(tmpContacts[i]->link2->body()) != activeBodies.end()))){
-            if(tmpContacts[i]->link1 && tmpContacts[i]->link1->body() != gaitParam.robot->body) activeBodies.insert(tmpContacts[i]->link1->body());
-          }else{
-            nextTmpContacts.push_back(tmpContacts[i]);
-          }
-        }
-      }
-      for(std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator it = gaitParam.objects.begin(); it != gaitParam.objects.end(); it++){
-        if(activeBodies.find(it->second->body) != activeBodies.end()) {
-          activeObjects.push_back(it->second);
-        }
-      }
+      GaitParam::calcActiveObjectsContacts(gaitParam.robot, gaitParam.objects, contacts, // input
+                                           activeObjects, activeContacts); // output
     }
 
     bool attentions_changed = false;
@@ -491,165 +422,29 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
       if(((it == attentions.end()) && (param.remove == false)) ||
          ((it != attentions.end()) && (param.remove == false) && (param.stateId == it->second->stateId))){
         // attentionを上書き or 新規追加
-        std::shared_ptr<Attention> attention;
-        attention->name = param.name;
-        attention->stateId = param.stateId + 1; // 1 増える
-        if(std::string(param.obj1) == ""){
-          if(std::string(param.link1) == ""){
-            attention->cog1 = nullptr;
-            attention->link1 = nullptr; // world
-          }else if(std::string(param.link1) == "CM"){
-            attention->cog1 = gaitParam.robot->body;
-            attention->link1 = nullptr; // robotの重心
-          }else{
-            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link1));
-            if(link) {
-              attention->cog1 = nullptr;
-              attention->link1 = link; // robotのlink
-            }else{
-              std::cerr << "attention link is not found! " << param.link1 << std::endl;
-              continue;
-            }
-          }
-        }else{
-          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj1));
-          if(object_it != gaitParam.objects.end()){
-            if(std::string(param.link1) == "CM"){
-              attention->cog1 = object_it->second->body;
-              attention->link1 = nullptr; // objectの重心
-            }else{
-              cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link1));
-              if(link) {
-                attention->cog1 = nullptr;
-                attention->link1 = link; // objectのlink
-              }else{
-                std::cerr << "attention link is not found! " << param.link1 << std::endl;
-                continue;
-              }
-            }
-          }else{
-            std::cerr << "attention object is not found! " << param.obj1 << std::endl;
-            continue;
-          }
-        }
-        if(!rtmutil::isAllFinite(param.localPose1)){
-          std::cerr << "attention localPose1 is not finite! " << std::endl;
-          continue;
-        }
-        cnoid::Position localPose1;
-        eigen_rtm_conversions::poseRTMToEigen(param.localPose1, localPose1);
-        attention->localPose1.reset(localPose1);
-        if(std::string(param.obj2) == ""){
-          if(std::string(param.link2) == ""){
-            attention->cog2 = nullptr;
-            attention->link2 = nullptr; // world
-          }else if(std::string(param.link2) == "CM"){
-            attention->cog2 = gaitParam.robot->body;
-            attention->link2 = nullptr; // robotの重心
-          }else{
-            cnoid::LinkPtr link = gaitParam.robot->body->link(std::string(param.link2));
-            if(link) {
-              attention->cog2 = nullptr;
-              attention->link2 = link; // robotのlink
-            }else{
-              std::cerr << "attention link is not found! " << param.link2 << std::endl;
-              continue;
-            }
-          }
-        }else{
-          std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator object_it = gaitParam.objects.find(std::string(param.obj2));
-          if(object_it != gaitParam.objects.end()){
-            if(std::string(param.link2) == "CM"){
-              attention->cog2 = object_it->second->body;
-              attention->link2 = nullptr; // objectの重心
-            }else{
-              cnoid::LinkPtr link = object_it->second->body->link(std::string(param.link2));
-              if(link) {
-                attention->cog2 = nullptr;
-                attention->link2 = link; // objectのlink
-              }else{
-                std::cerr << "attention link is not found! " << param.link2 << std::endl;
-                continue;
-              }
-            }
-          }else{
-            std::cerr << "attention object is not found! " << param.obj2 << std::endl;
-            continue;
-          }
-        }
-        if(!rtmutil::isAllFinite(param.localPose2)){ std::cerr << "attention localPose2 is not finite! " << std::endl; continue; }
-        cnoid::Position localPose2;
-        eigen_rtm_conversions::poseRTMToEigen(param.localPose2, localPose2);
-        attention->localPose2.reset(localPose2);
-        if(!rtmutil::isAllFinite(param.refWrench)){ std::cerr << "attention refWrench is not finite! " << std::endl; continue; }
-        if(param.refWrench.length() != 6){ std::cerr << "attention refWrench dimension mismatch! " << param.refWrench.length() << std::endl; continue; }
-        cnoid::Vector6 refWrench;
-        eigen_rtm_conversions::vectorRTMToEigen(param.refWrench,refWrench);
-        attention->refWrench.reset(refWrench);
-        if(!rtmutil::isAllFinite(param.C)){ std::cerr << "attention C is not finite! " << std::endl; continue; }
-        bool valid = true;
-        for(int row = 0; row < param.C.length(); row++){
-          if(param.C[row].length() != 6) { valid = false; break; }
-        }
-        if(!valid) { std::cerr << "attention C dimension mismatch! " << std::endl; continue; }
-        attention->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(param.C.length(),6);
-        for(int row = 0; row < param.C.length(); row++){
-          for(int col = 0; col < param.C[row].length(); col++){
-            if(param.C[row][col] != 0.0) {
-              attention->C.insert(row,col) = param.C[row][col];
-            }
-          }
-        }
-        if(!rtmutil::isAllFinite(param.ld) || !rtmutil::isAllFinite(param.ud)){ std::cerr << "attention ld/ud is not finite! " << std::endl; continue; }
-        if(param.ld.length() != param.C.length() || param.ud.length() != param.C.length()){ std::cerr << "attention ld/ud dimension mismatch! " << param.ld.length() << " " << param.ud.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.ld, attention->ld);
-        eigen_rtm_conversions::vectorRTMToEigen(param.ud, attention->ud);
-        if(!rtmutil::isAllFinite(param.Kp) || !rtmutil::isAllFinite(param.Dp)){ std::cerr << "attention Kp/Dp is not finite! " << std::endl; continue; }
-        if(param.Kp.length() != param.C.length() || param.Dp.length() != param.C.length()){ std::cerr << "attention Kp/Dp dimension mismatch! " << param.Kp.length() << " " << param.Dp.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.Kp, attention->Kp);
-        eigen_rtm_conversions::vectorRTMToEigen(param.Dp, attention->Dp);
-        if(!rtmutil::isAllFinite(param.limitp)){ std::cerr << "attention limitp is not finite! " << std::endl; continue; }
-        if(param.limitp.length() != param.C.length()){ std::cerr << "attention limitp dimension mismatch! " << param.limitp.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.limitp, attention->limitp);
-        if(!rtmutil::isAllFinite(param.weightp)){ std::cerr << "attention weightp is not finite! " << std::endl; continue; }
-        if(param.weightp.length() != param.C.length()){ std::cerr << "attention weightp dimension mismatch! " << param.weightp.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.weightp, attention->weightp);
-        attention->priority = param.priority;
-        attention->horizon = param.horizon;
-        if(!rtmutil::isAllFinite(param.Kw) || !rtmutil::isAllFinite(param.Dw)){ std::cerr << "attention Kw/Dw is not finite! " << std::endl; continue; }
-        if(param.Kw.length() != param.C.length() || param.Dw.length() != param.C.length()){ std::cerr << "attention Kw/Dw dimension mismatch! " << param.Kw.length() << " " << param.Dw.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.Kw, attention->Kw);
-        eigen_rtm_conversions::vectorRTMToEigen(param.Dw, attention->Dw);
-        if(!rtmutil::isAllFinite(param.limitw)){ std::cerr << "attention limitw is not finite! " << std::endl; continue; }
-        if(param.limitw.length() != param.C.length()){ std::cerr << "attention limitw dimension mismatch! " << param.limitw.length() << std::endl; continue; }
-        eigen_rtm_conversions::vectorRTMToEigen(param.limitw, attention->limitw);
+        std::shared_ptr<Attention> attention = std::make_shared<Attention>();
+        if(!attention->initializeFromIdl(gaitParam.robot, gaitParam.objects, param)) continue;
         if(mode.isABCRunning()) attention->onStartAutoBalancer();
         if(mode.isSTRunning()) attention->onStartStabilizer();
         attentions[attention->name] = attention;
         attentions_changed = true;
       }else if((it != attentions.end()) && (param.remove == true) && (param.stateId == it->second->stateId)){
-        // attentoniを消去
+        // attentionを消去
         attentions.erase(it);
         attentions_changed = true;
       }
     }
     if(attentions_changed){
-      prioritizedAttentions.clear();
-      std::vector<std::shared_ptr<Attention> > tmpAttentions; tmpAttentions.reserve(attentions.size());
-      std::vector<std::shared_ptr<Attention> > nextTmpAttentions; nextTmpAttentions.reserve(attentions.size());
-      for(std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it = attentions.begin(); it != attentions.end(); it++) tmpAttentions.push_back(it->second);
-      while(tmpAttentions.size() > 0){
-        long maxPriority = std::numeric_limits<long>::min();
-        for(int i=0;i<tmpAttentions.size();i++) {
-          if(tmpAttentions[i]->priority > maxPriority) maxPriority = tmpAttentions[i]->priority;
-        }
-        prioritizedAttentions.emplace_back();
-        nextTmpAttentions.clear();
-        for(int i=0;i<tmpAttentions.size();i++) {
-          if(tmpAttentions[i]->priority == maxPriority) prioritizedAttentions.back().push_back(tmpAttentions[i]);
-          else nextTmpAttentions.push_back(tmpAttentions[i]);
-        }
-        tmpAttentions = nextTmpAttentions;
+      GaitParam::calcPrioritizedAttentions(attentions, // input
+                                           prioritizedAttentions); // output
+    }
+
+    for(int i=0;i<ports.m_primitiveCommand_.attentionDatas.length();i++){
+      actkin_stabilizer::AttentionDataIdl& param = ports.m_primitiveCommand_.attentionDatas[i];
+      std::unordered_map<std::string, std::shared_ptr<Attention> >::iterator it = attentions.find(std::string(param.name));
+      if((it != attentions.end()) && (param.stateId == it->second->stateId)){
+        // attentionを上書き
+        it->second->updateFromIdl(param);
       }
     }
   }

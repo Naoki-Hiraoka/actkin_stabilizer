@@ -20,7 +20,6 @@
 
 #include <cpp_filters/TwoPointInterpolator.h>
 
-#include <hrpsys/idl/RobotHardwareService.hh>
 #include <collision_checker_msgs/idl/Collision.hh>
 #include <auto_stabilizer_msgs/idl/AutoStabilizer.hh>
 
@@ -208,6 +207,7 @@ protected:
 
   static bool readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision, std::unordered_map<std::string, std::shared_ptr<Contact> >& contacts, std::unordered_map<std::string, std::shared_ptr<Attention> >& attentions, std::vector<std::shared_ptr<Object> >& activeObjects, std::vector<std::shared_ptr<Contact> >& activeContacts, std::vector<std::vector<std::shared_ptr<Attention> > >& prioritizedAttentions);
   static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter);
+
 };
 
 

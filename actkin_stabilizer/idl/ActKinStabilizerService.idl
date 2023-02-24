@@ -44,6 +44,7 @@ module actkin_stabilizer
     // obj=="", link=="CM": robotの重心
     // obj==[obj名], link==[親joint名]: objectのlink
     // obj==[obj名], link=="CM": objectの重心
+    // 片方が重心の場合、もう一方はworld以外不可.
     string obj1;
     string link1;
     RTC::Pose3D localPose1; // link1 frame
@@ -68,7 +69,7 @@ module actkin_stabilizer
 
   struct AttentionDataIdl{
     string name;
-    unsigned long id; // 現在のstateId以外のstateIdを伴う指令は無視する
+    unsigned long stateId; // 現在のstateId以外のstateIdを伴う指令は無視する
     sequence<PosePointIdl> localPose1; // link1 frame.
     sequence<PosePointIdl> localPose2; // link2 frame.
     sequence<VectorPointIdl> ld; // サイズはld,udと同じ
