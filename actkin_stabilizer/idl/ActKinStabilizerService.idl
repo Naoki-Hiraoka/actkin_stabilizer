@@ -121,7 +121,7 @@ module actkin_stabilizer
     struct ActKinStabilizerParam
     {
       // ActKinStabilizer
-      /// 要素数と順序はnumJoints()と同じ. falseの場合、tauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない.
+      /// 含まれない場合、tauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない.
       sequence<string> controllable_joints;
       /// Transition time [s] for start Stabilizer. 下限0.01[s]
       double st_start_transition_time;

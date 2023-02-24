@@ -31,6 +31,7 @@ include_directories(
   )
 link_directories(
   ${CHOREONOID_LIBRARY_DIRS}
+  ${openrtm_aist_LIBRARY_DIRS}
   )
 
 add_library(ActKinStabilizer SHARED
