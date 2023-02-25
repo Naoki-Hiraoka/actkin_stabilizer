@@ -546,6 +546,23 @@ bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const Ac
     if(isFinite) ports.m_objectStatesOut_.write();
   }
 
+  {
+    // primitiveState
+    ports.m_primitiveState_.tm = ports.m_qRef_.tm;
+    ports.m_primitiveState_.contactParams.length(gaitParam.contacts.size());
+    int idx = 0;
+    for(std::unordered_map<std::string, std::shared_ptr<Contact> >::const_iterator it=gaitParam.contacts.begin(); it!=gaitParam.contacts.end(); it++){
+      it->second->copyToIdl(ports.m_primitiveState_.contactParams[idx]);
+      idx++;
+    }
+    idx = 0;
+    ports.m_primitiveState_.attentionParams.length(gaitParam.attentions.size());
+    for(std::unordered_map<std::string, std::shared_ptr<Attention> >::const_iterator it=gaitParam.attentions.begin(); it!=gaitParam.attentions.end(); it++){
+      it->second->copyToIdl(ports.m_primitiveState_.attentionParams[idx]);
+      idx++;
+    }
+    ports.m_primitiveStateOut_.write();
+  }
 
   // only for logger. (IDLE時の出力や、モード遷移時の連続性はてきとうで良い)
   if(mode.isABCRunning()){

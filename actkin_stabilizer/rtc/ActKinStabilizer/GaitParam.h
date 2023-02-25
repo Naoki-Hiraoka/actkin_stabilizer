@@ -62,7 +62,10 @@ public:
 
 public:
   bool initializeFromIdl(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const actkin_stabilizer::ContactParamIdl& idl); // idlから初期化
+  void copyToIdl(actkin_stabilizer::ContactParamIdl& idl);
   void onExecute(double dt){
+    cnoid::Position pose1 = link1 ? link1->T() * localPose1 : localPose1;
+    this->prevLocalPose2 = link2 ? link2->T().inverse() * pose1 : pose1;
   }
   void onStartAutoBalancer(){
     cnoid::Position pose1 = link1 ? link1->T() * localPose1 : localPose1;
@@ -104,6 +107,7 @@ public:
 public:
   bool initializeFromIdl(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const actkin_stabilizer::AttentionParamIdl& idl); // idlから初期化
   bool updateFromIdl(const actkin_stabilizer::AttentionDataIdl& idl); // idlから更新
+  void copyToIdl(actkin_stabilizer::AttentionParamIdl& idl);
   void onExecute(double dt){
     this->localPose1.interpolate(dt);
     this->localPose2.interpolate(dt);
@@ -213,6 +217,7 @@ public:
     softMaxTorque.resize(robot_->numJoints(), cpp_filters::TwoPointInterpolator<double>(std::numeric_limits<double>::max(),0.0,0.0,cpp_filters::HOFFARBIB));
     jointControllable.resize(robot_->numJoints(), true);
 
+    robot_->setName("");
     robot = std::make_shared<Object>(robot_);
 
     refRobotRaw = robot_->clone();

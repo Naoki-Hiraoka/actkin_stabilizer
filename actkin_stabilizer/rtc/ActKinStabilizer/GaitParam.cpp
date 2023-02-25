@@ -98,6 +98,27 @@ bool Contact::initializeFromIdl(const std::shared_ptr<Object>& robot, const std:
   return true;
 }
 
+void Contact::copyToIdl(actkin_stabilizer::ContactParamIdl& idl){
+  idl.name = this->name.c_str();
+  idl.stateId = this->stateId;
+  idl.remove = false;
+  idl.obj1 = this->link1 ? this->link1->body()->name().c_str() : "";
+  idl.link1 = this->link1 ? this->link1->name().c_str() : "";
+  eigen_rtm_conversions::poseEigenToRTM(this->localPose1, idl.localPose1);
+  idl.obj2 = this->link2 ? this->link2->body()->name().c_str() : "";
+  idl.link2 = this->link2 ? this->link2->name().c_str() : "";
+  idl.axis.length(6); for(int i=0;i<6;i++) idl.axis[i] = false;
+  for (int k=0; k < this->C.outerSize(); ++k){
+    for (Eigen::SparseMatrix<double,Eigen::RowMajor>::InnerIterator it(this->C,k); it; ++it){
+      if(it.value() != 0.0) idl.axis[it.col()] = true;
+    }
+  }
+  eigen_rtm_conversions::matrixEigenToRTM(this->C, idl.C);
+  eigen_rtm_conversions::vectorEigenToRTM(this->ld, idl.ld);
+  eigen_rtm_conversions::vectorEigenToRTM(this->ud, idl.ud);
+  eigen_rtm_conversions::vectorEigenToRTM(this->w, idl.w);
+}
+
 bool Attention::initializeFromIdl(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const actkin_stabilizer::AttentionParamIdl& idl){
   // idlから初期化
   this->name = idl.name;
@@ -311,6 +332,31 @@ bool Attention::updateFromIdl(const actkin_stabilizer::AttentionDataIdl& idl){
     if(vector.size() == 6) this->refWrench.setGoal(vector, idl.refWrench[0].time);
   }
   return true;
+}
+
+void Attention::copyToIdl(actkin_stabilizer::AttentionParamIdl& idl){
+  idl.name = this->name.c_str();
+  idl.stateId = this->stateId;
+  idl.remove = false;
+  idl.obj1 = this->cog1 ? this->cog1->name().c_str() : this->link1 ? this->link1->body()->name().c_str() : "";
+  idl.link1 = this->cog1 ? "CM" : this->link1 ? this->link1->body()->name().c_str() : "";
+  eigen_rtm_conversions::poseEigenToRTM(this->localPose1.value(), idl.localPose1);
+  idl.obj2 = this->cog2 ? this->cog2->name().c_str() : this->link2 ? this->link2->body()->name().c_str() : "";
+  idl.link2 = this->cog2 ? "CM" : this->link2 ? this->link2->body()->name().c_str() : "";
+  eigen_rtm_conversions::poseEigenToRTM(this->localPose2.value(), idl.localPose2);
+  eigen_rtm_conversions::vectorEigenToRTM(this->refWrench.value(), idl.refWrench);
+  eigen_rtm_conversions::matrixEigenToRTM(this->C, idl.C);
+  eigen_rtm_conversions::vectorEigenToRTM(this->ld.value(), idl.ld);
+  eigen_rtm_conversions::vectorEigenToRTM(this->ud.value(), idl.ud);
+  eigen_rtm_conversions::vectorEigenToRTM(this->Kp, idl.Kp);
+  eigen_rtm_conversions::vectorEigenToRTM(this->Dp, idl.Dp);
+  eigen_rtm_conversions::vectorEigenToRTM(this->limitp, idl.limitp);
+  eigen_rtm_conversions::vectorEigenToRTM(this->weightp, idl.weightp);
+  idl.priority = this->priority;
+  idl.horizon = this->horizon;
+  eigen_rtm_conversions::vectorEigenToRTM(this->Kw, idl.Kw);
+  eigen_rtm_conversions::vectorEigenToRTM(this->Dw, idl.Dw);
+  eigen_rtm_conversions::vectorEigenToRTM(this->limitw, idl.limitw);
 }
 
 // static function
