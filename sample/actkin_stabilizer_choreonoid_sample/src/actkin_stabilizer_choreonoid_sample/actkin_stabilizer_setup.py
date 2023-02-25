@@ -9,6 +9,10 @@ from hrpsys import rtm
 from hrpsys.OpenHRP import *
 import OpenHRP
 
+import hrpsys_ext_rtc
+from hrpsys_ext_rtc.EmergencyStopper2Service_idl import *
+from hrpsys_ext_rtc.CollisionDetector2Service_idl import *
+
 import actkin_stabilizer
 from actkin_stabilizer.ActKinStabilizerService_idl import *
 
@@ -34,6 +38,7 @@ class ActKinStabilizer_Configurator(object):
     sh_svc = None
     akst_svc = None
     co_svc = None
+    es_svc = None
     kf_svc = None
     rmfo_svc = None
     log_svc = None
@@ -45,7 +50,9 @@ class ActKinStabilizer_Configurator(object):
         self.seq_svc = rtm.findService(findComp("seq"),"SequencePlayerService","SequencePlayerService","service0")._narrow(OpenHRP.SequencePlayerService)
         self.sh_svc = rtm.findService(findComp("sh"),"StateHolderService","StateHolderService","service0")._narrow(OpenHRP.StateHolderService)
         self.akst_svc = rtm.findService(findComp("akst"),"ActKinStabilizerService","ActKinStabilizerService","service0")._narrow(actkin_stabilizer.ActKinStabilizerService)
-        self.co_svc = rtm.findService(findComp("co"),"CollisionDetectorService","CollisionDetectorService","service0")._narrow(OpenHRP.CollisionDetectorService)
+        self.co_svc = rtm.findService(findComp("CollisionDetector20"),"CollisionDetector2Service","CollisionDetector2Service","service0")._narrow(hrpsys_ext_rtc.CollisionDetector2Service)
+        self.es_svc = rtm.findService(findComp("es"),"EmergencyStopper2Service","EmergencyStopper2Service","service0")._narrow(hrpsys_ext_rtc.EmergencyStopper2Service)
+        self.ces_svc = rtm.findService(findComp("ces"),"EmergencyStopper2Service","EmergencyStopper2Service","service0")._narrow(hrpsys_ext_rtc.EmergencyStopper2Service)
         self.kf_svc = rtm.findService(findComp("kf"),"KalmanFilterService","KalmanFilterService","service0")._narrow(OpenHRP.KalmanFilterService)
         self.rmfo_svc = rtm.findService(findComp("rmfo"),"RemoveForceSensorLinkOffsetService","RemoveForceSensorLinkOffsetService","service0")._narrow(OpenHRP.RemoveForceSensorLinkOffsetService)
         self.log_svc = findComp("log").service("service0")._narrow(OpenHRP.DataLoggerService)
@@ -75,7 +82,7 @@ class ActKinStabilizer_Configurator(object):
             self.seq_svc.addJointGroup(k, v)
 
         # move to idle mode for filter type RTCs
-        for rtc_name in ["akst","co","el"]:
+        for rtc_name in ["akst","es","ces","co","el"]:
             rtc = rtm.findRTC(rtc_name)
             if rtc:
                 rtc.stop();
@@ -161,6 +168,16 @@ class ActKinStabilizer_Configurator(object):
     def removeForceSensorOffsetRMFO(self, sensor_names=[], tm=8.0):
         return self.rmfo_svc.removeForceSensorOffset(sensor_names, tm)
 
+    def startST():
+        self.akst_svc.startStabilizer()
+        #self.co_svc.disableCollisionDetection()
+        self.es_svc.startTorque()
+
+    def stopST():
+        self.es_svc.stopMotion("all")
+        self.akst_svc.stopStabilizer()
+        self.co_svc.enableCollisionDetection()
+
     def setupLogger(self):
         self.log_svc.add("TimedDoubleSeq","sh_qOut")
         rtm.connectPorts(rtm.findRTC("sh").port("qOut"),rtm.findRTC("log").port("sh_qOut"))
@@ -177,25 +194,8 @@ class ActKinStabilizer_Configurator(object):
             rtm.connectPorts(rtm.findRTC("RobotHardware0").port(sen),rtm.findRTC("log").port("RobotHardware0_" + sen))
         self.log_svc.add("TimedOrientation3D","kf_rpy")
         rtm.connectPorts(rtm.findRTC("kf").port("rpy"),rtm.findRTC("log").port("kf_rpy"))
-        self.log_svc.add("TimedDoubleSeq","akst_q")
-        rtm.connectPorts(rtm.findRTC("akst").port("q"),rtm.findRTC("log").port("akst_q"))
-        self.log_svc.add("TimedPoint3D","akst_genCogOut")
-        rtm.connectPorts(rtm.findRTC("akst").port("genCogOut"),rtm.findRTC("log").port("akst_genCogOut"))
-        self.log_svc.add("TimedPoint3D","akst_genDcmOut")
-        rtm.connectPorts(rtm.findRTC("akst").port("genDcmOut"),rtm.findRTC("log").port("akst_genDcmOut"))
-        self.log_svc.add("TimedPoint3D","akst_genZmpOut")
-        rtm.connectPorts(rtm.findRTC("akst").port("genZmpOut"),rtm.findRTC("log").port("akst_genZmpOut"))
-        self.log_svc.add("TimedPoint3D","akst_tgtZmpOut")
-        rtm.connectPorts(rtm.findRTC("akst").port("tgtZmpOut"),rtm.findRTC("log").port("akst_tgtZmpOut"))
-        self.log_svc.add("TimedPoint3D","akst_actCogOut")
-        rtm.connectPorts(rtm.findRTC("akst").port("actCogOut"),rtm.findRTC("log").port("akst_actCogOut"))
-        self.log_svc.add("TimedPoint3D","akst_actDcmOut")
-        rtm.connectPorts(rtm.findRTC("akst").port("actDcmOut"),rtm.findRTC("log").port("akst_actDcmOut"))
-        for ee in ["rleg", "lleg", "rarm", "larm"]:
-            self.log_svc.add("TimedDoubleSeq","akst_tgt" + ee + "WrenchOut")
-            rtm.connectPorts(rtm.findRTC("akst").port("tgt" + ee + "WrenchOut"),rtm.findRTC("log").port("akst_tgt" + ee + "WrenchOut"))
-            self.log_svc.add("TimedDoubleSeq","akst_act" + ee + "WrenchOut")
-            rtm.connectPorts(rtm.findRTC("akst").port("act" + ee + "WrenchOut"),rtm.findRTC("log").port("akst_act" + ee + "WrenchOut"))
+        self.log_svc.add("TimedDoubleSeq","akst_genTauOut")
+        rtm.connectPorts(rtm.findRTC("akst").port("genTauOut"),rtm.findRTC("log").port("akst_genTauOut"))
         self.log_svc.add("TimedDoubleSeq","el_q")
         rtm.connectPorts(rtm.findRTC("el").port("q"),rtm.findRTC("log").port("el_q"))
         self.log_svc.maxLength(500*60)

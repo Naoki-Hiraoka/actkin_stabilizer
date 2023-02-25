@@ -55,6 +55,7 @@ ActKinStabilizer::ActKinStabilizer(RTC::Manager* manager) : RTC::DataFlowCompone
 }
 
 RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
+  std::cerr << "[" << m_profile.instance_name << "] onInitialize()" << std::endl;
 
   // add ports
   this->addInPort("qRef", this->ports_.m_qRefIn_);
@@ -170,7 +171,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
       localT.linear() = localR;
 
       if(idx<2){
-        std::shared_ptr<Contact> contact;
+        std::shared_ptr<Contact> contact = std::make_shared<Contact>();
         contact->name = name;
         contact->link1 = this->gaitParam_.robot->body->link(parentLink);
         contact->localPose1 = localT;
@@ -206,7 +207,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
 
         this->gaitParam_.contacts[contact->name] = contact;
       }else{
-        std::shared_ptr<Attention> attention;
+        std::shared_ptr<Attention> attention = std::make_shared<Attention>();
         attention->name = name;
         attention->link1 = this->gaitParam_.robot->body->link(parentLink);
         attention->localPose1.reset(localT);
@@ -224,7 +225,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     if(idx>0){
       {
         // cog
-        std::shared_ptr<Attention> attention;
+        std::shared_ptr<Attention> attention = std::make_shared<Attention>();
         attention->name = "cog";
         attention->cog2 = this->gaitParam_.robot->body;
         attention->C.resize(3,6); for(int i=0;i<3;i++) attention->C.insert(i,i)=1.0; attention->ld.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3)); attention->ud.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3));
@@ -237,10 +238,10 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
       }
       {
         // root
-        std::shared_ptr<Attention> attention;
+        std::shared_ptr<Attention> attention = std::make_shared<Attention>();
         attention->name = "root";
         attention->link1 = this->gaitParam_.robot->body->rootLink();
-        attention->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(3,6); for(int i=0;i<3;i++) attention->C.insert(3+i,i)=1.0;
+        attention->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(3,6); for(int i=0;i<3;i++) attention->C.insert(i,3+i)=1.0;
         attention->ld.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3)); attention->ud.reset(cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3), cnoid::VectorX::Zero(3));
         attention->Kp.resize(3); attention->Kp<<100, 100, 100; attention->Dp.resize(3); attention->Dp<<25, 25, 25;
         attention->limitp.resize(3); attention->limitp<<5.0, 5.0, 5.0; attention->weightp.resize(3); attention->weightp<<1.0,1.0,1.0;

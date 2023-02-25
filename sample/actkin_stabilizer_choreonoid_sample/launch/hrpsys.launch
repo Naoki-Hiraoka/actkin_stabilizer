@@ -25,7 +25,7 @@
     </rosparam>
   </node>
   <rtconnect from="el.rtc:q"     to="RobotHardware0.rtc:qRef" />
-  <rtconnect from="akst.rtc:genTauOut" to="RobotHardware0.rtc:tauRef" />
+  <rtconnect from="ces.rtc:tau" to="RobotHardware0.rtc:tauRef" />
   <!-- <rtactivate component="RobotHardware0.rtc"/> -->
 
   <node pkg="hrpsys_ros_bridge" name="RobotHardwareServiceROSBridge" type="RobotHardwareServiceROSBridgeComp"
@@ -87,7 +87,6 @@
   <rtconnect from="RobotHardware0.rtc:dq" to="akst.rtc:dqAct" />
   <rtconnect from="sh.rtc:tqOut"          to="akst.rtc:refTauIn" />
   <rtconnect from="kf.rtc:rpy"            to="akst.rtc:actImuIn" />
-  <rtconnect from="akst.rtc:RobotHardwareService" to="RobotHardware0.rtc:RobotHardwareService"  subscription_type="new" push_policy="new"/>
   <!-- <rtactivate component="akst.rtc"/> -->
 
   <node pkg="actkin_stabilizer" name="ActKinStabilizerServiceROSBridge" type="ActKinStabilizerServiceROSBridgeComp"
@@ -105,6 +104,7 @@
   <rtconnect from="sh.rtc:tqOut"     to="es.rtc:tauRef" />
   <rtconnect from="RobotHardware0.rtc:q"  to="es.rtc:qAct" />
   <rtconnect from="akst.rtc:genTauOut"     to="es.rtc:tauCtl" />
+  <rtconnect from="es.rtc:RobotHardwareService" to="RobotHardware0.rtc:RobotHardwareService"  subscription_type="new" push_policy="new"/>
   <!-- <rtactivate component="es.rtc"/> -->
 
   <node name="load_ces"  pkg="rtcloader" type="load.py" output="screen" args="hrpsys_ext_rtc/EmergencyStopper2 localhost:2810">
@@ -116,10 +116,12 @@
   <rtconnect from="es.rtc:q"     to="ces.rtc:qRef" />
   <rtconnect from="es.rtc:tau"     to="ces.rtc:tauRef" />
   <rtconnect from="RobotHardware0.rtc:q"  to="ces.rtc:qAct" />
+  <rtconnect from="CollisionDetector20.rtc:stopSignal"  to="ces.rtc:stopSignal" />
+  <rtconnect from="CollisionDetector20.rtc:releaseSignal"  to="ces.rtc:releaseSignal" />
   <!-- <rtactivate component="ces.rtc"/> -->
 
   <node pkg="hrpsys_ext_rtc" name="CollisionDetector2" type="CollisionDetector2Comp"
-        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:50" -o "example.CollisionDetector2.config_file:$(arg CONF_FILE)"' />
+        output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:500" -o "example.CollisionDetector2.config_file:$(arg CONF_FILE)"' />
   <rtconnect from="es.rtc:q" to="CollisionDetector20.rtc:qRef" subscription_type="new" push_policy="new"/>
   <rtconnect from="ces.rtc:q" to="CollisionDetector20.rtc:qCurrent" subscription_type="new" push_policy="new"/>
   <rtconnect from="RobotHardware0.rtc:servoState"     to="CollisionDetector20.rtc:servoStateIn" />
@@ -223,7 +225,7 @@
   <rtconnect from="rmfo.rtc:off_lfsensor"     to="HrpsysSeqStateROSBridge0.rtc:off_lfsensor" subscription_type="new" push_policy="new"/>
   <rtconnect from="rmfo.rtc:off_rhsensor"     to="HrpsysSeqStateROSBridge0.rtc:off_rhsensor" subscription_type="new" push_policy="new"/>
   <rtconnect from="rmfo.rtc:off_lhsensor"     to="HrpsysSeqStateROSBridge0.rtc:off_lhsensor" subscription_type="new" push_policy="new"/>
-  <rtconnect from="akst.rtc:genBaseTformOut" to="HrpsysSeqStateROSBridge0.rtc:baseTform" subscription_type="new" push_policy="new"/>
+  <rtconnect from="akst.rtc:actBaseTformOut" to="HrpsysSeqStateROSBridge0.rtc:baseTform" subscription_type="new" push_policy="new"/>
   <rtconnect from="sh.rtc:qOut" to="HrpsysSeqStateROSBridge0.rtc:mcangle" subscription_type="new" push_policy="new"/>
   <rtconnect from="sh.rtc:rfsensorOut"     to="HrpsysSeqStateROSBridge0.rtc:ref_rfsensor" subscription_type="new" push_policy="new"/>
   <rtconnect from="sh.rtc:lfsensorOut"     to="HrpsysSeqStateROSBridge0.rtc:ref_lfsensor" subscription_type="new" push_policy="new"/>
@@ -249,9 +251,9 @@
   <!-- self collision BEGIN -->
   <node pkg="collision_checker_rtc" name="CollisionChecker" type="CollisionCheckerComp"
         output="screen" args ='-o "corba.master_manager:localhost:2810" -o "corba.nameservers:localhost:15005" -o "naming.formats:%n.rtc" -o "exec_cxt.periodic.rate:50" -o "example.CollisionChecker.config_file:$(arg CONF_FILE)"' />
-  <rtconnect from="akst.rtc:q" to="CollisionChecker0.rtc:qIn" subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
-  <rtconnect from="akst.rtc:genBasePosOut" to="CollisionChecker0.rtc:basePosIn"  subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
-  <rtconnect from="akst.rtc:genBaseRpyOut" to="CollisionChecker0.rtc:baseRpyIn"  subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
+  <rtconnect from="RobotHardware0.rtc:q" to="CollisionChecker0.rtc:qIn" subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
+  <rtconnect from="akst.rtc:actBasePosOut" to="CollisionChecker0.rtc:basePosIn"  subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
+  <rtconnect from="akst.rtc:actBaseRpyOut" to="CollisionChecker0.rtc:baseRpyIn"  subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
   <rtconnect from="CollisionChecker0.rtc:collisionOut" to="akst.rtc:selfCollisionIn" subscription_type="new" push_policy="new" push_rate="50" buffer_length="8"/>
   <rtactivate component="CollisionChecker0.rtc" />
   <!-- self collision END -->

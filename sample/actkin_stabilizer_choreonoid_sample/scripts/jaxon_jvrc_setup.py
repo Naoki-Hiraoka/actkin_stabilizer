@@ -19,7 +19,7 @@ class JAXON_JVRC_Configurator(ActKinStabilizer_Configurator):
         return True
 
     def setCollisionFreeResetPose (self):
-        self.seq_svc.setJointAngles([0.000128, -0.002474, -0.488908, 1.01524, -0.526335, 0.002474, 0.000128, -0.002474, -0.488869, 1.01524,-0.526374, 0.002474,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-0.523599,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.523599,0.0,0.0,0.0,0.0,0.0]+[0.0]*4,10.0)
+        self.seq_svc.setJointAngles([0.000128, -0.002474, -0.488908, 1.01524, -0.526335, 0.002474, 0.000128, -0.002474, -0.488869, 1.01524,-0.526374, 0.002474,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-0.523599,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.523599,0.0,0.0,0.0,0.0,0.0]+[0.0]*4,10.0)
         return True
 
     def setAkstParametersJAXON(self):
@@ -36,9 +36,9 @@ class JAXON_JVRC_Configurator(ActKinStabilizer_Configurator):
 
     def init(self):
         super(JAXON_JVRC_Configurator, self).init()
-        self.setAkstParametersJAXON()
-        self.akst_svc.startAutoBalancer()
-        self.akst_svc.startStabilizer()
+        #self.setAkstParametersJAXON()
+        #self.akst_svc.startAutoBalancer()
+        #self.akst_svc.startStabilizer()
 
 if __name__ == '__main__':
     from hrpsys import rtm
