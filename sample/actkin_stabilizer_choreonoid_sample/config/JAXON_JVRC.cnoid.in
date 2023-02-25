@@ -65,7 +65,7 @@ items:
                 controller: "BridgeShmController"
                 reloading: true
                 inputLinkPositions: false
-                controllerOptions: "pdGainsSimFileName:@hrpsys_choreonoid_tutorials_SOURCE_PREFIX@/models/JAXON_JVRC.PDgains_sim.dat"
+                controllerOptions: "pdGainsSimFileName:@hrpsys_choreonoid_tutorials_SOURCE_PREFIX@/models/JAXON_JVRC.PDgains_sim.dat frictionsSimFileName:@PROJECT_SOURCE_DIR@/config/JAXON_JVRC.Frictions_sim.dat"
             -
               id: 6
               name: "Crane"
