@@ -4,8 +4,36 @@
 #include <cnoid/EigenUtil>
 
 bool ActToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt, // input
-                    std::shared_ptr<Object>& robot, std::vector<std::shared_ptr<Object> >& objects) const // input & output
+                    std::shared_ptr<Object>& robot, std::vector<std::shared_ptr<Object> >& activeObjects) const // input & output
 {
+  /*
+    actrobotRawのqをそのままactRobotへ. dqもfilterしてからactRobotへ
+
+    actRobotのXYZrpy. objectsのXYZrpy, qを探索変数として、
+    1 imu linkのroll pitch
+    1 contactsのlocalPose1とlocalPose2のS成分 (robotがからまない)
+    2 contactsのlocalPose1とlocalPose2のS成分 (robotがからむ)
+    が一致するようなものを求める.
+
+    actRobotのv, w, cogVel. objectsのdq, v, w, cogVelを、filterによって求める.
+  */
+
+  // actrobotRawのqをそのままactRobotへ. dqもfilterしてからactRobotへ
+  for(int i=0;i<gaitParam.actRobotRaw->numJoints();i++){
+    robot->body->joint(i)->q() = gaitParam.actRobotRaw->joint(i)->q();
+    robot->body->joint(i)->dq() = robot->dqAct[i].passFilter(gaitParam.actRobotRaw->joint(i)->dq(), dt);
+  }
+
+  // actRobotのXYZ, yaw. objectsのXYZrpy, qを探索変数として、contactsのlocalPose1とlocalPose2のS成分が一致するようなものを求める.
+  // このとき、robotがからむcontactはからまないcontactよりも低優先度
+
+  // TODO
+
+  // actRobotのdv, dw, cogVel. objectsのdq, dv, dw, cogVelを、filterによって求める.
+  robot->body->rootLink()->v() = robot->actRootv.passFilter(robot->body->rootLink()->v());
+  robot->body->rootLink()->w() = robot->actRootw.passFilter(robot->body->rootLink()->w());
+  //robot->body->rootLink()->
+
 
   // cnoid::Vector3 actCogPrev = actRobot->centerOfMass();
   // cnoid::Position actRootPrev = actRobot->rootLink()->T();

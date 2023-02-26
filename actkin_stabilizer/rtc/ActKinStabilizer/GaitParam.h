@@ -20,7 +20,8 @@ public:
 
   // ActToGenFrameConverter
   std::vector<cpp_filters::FirstOrderLowPassFilter<double> > dqAct; // これを使ってfilterした後の値がbody->link->dq()に入る. cutoffを2loopぶんにするために、passFilterのdtは常に1/2[s], cutOffは1[Hz]とする.
-  cpp_filters::FirstOrderLowPassFilter<cnoid::Vector6> actRootVel{3.5, cnoid::Vector6::Zero()}; // generate frame. 現在のroot速度. rootLink origin. なんとなくactCogVelと同程度のhzにしておく. これを使ってfilterした後の値がactRobot->rootLink()->v()/w()に入る
+  cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> actRootv{3.5, cnoid::Vector3::Zero()}; // generate frame. 現在のroot速度. rootLink origin. なんとなくactCogVelと同程度のhzにしておく. これを使ってfilterした後の値がactRobot->rootLink()->v()/w()に入る
+  cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> actRootw{3.5, cnoid::Vector3::Zero()}; // generate frame. 現在のroot速度. rootLink origin. なんとなくactCogVelと同程度のhzにしておく. これを使ってfilterした後の値がactRobot->rootLink()->v()/w()に入る
   cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> actCogVel{3.5, cnoid::Vector3::Zero()}; // generate frame.  現在のCOM速度. cutoff=4.0Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ
 
 public:
@@ -39,7 +40,8 @@ public:
   }
   void onStartAutoBalancer(){
     for(int i=0;i<dqAct.size();i++) dqAct[i].reset(0.0);
-    actRootVel.reset(cnoid::Vector6::Zero());
+    actRootv.reset(cnoid::Vector3::Zero());
+    actRootw.reset(cnoid::Vector3::Zero());
     actCogVel.reset(cnoid::Vector3::Zero());
   }
   void onStartStabilizer(){
@@ -54,6 +56,7 @@ public:
   cnoid::LinkPtr link1{nullptr}; // nullptrならworld
   cnoid::Position localPose1{cnoid::Position::Identity()}; // link1 frame.
   cnoid::LinkPtr link2{nullptr}; // nullptrならworld
+  cnoid::Position localPose2{cnoid::Position::Identity()}; // link2 frame. 接触したときの初期値が入る
   Eigen::SparseMatrix<double,Eigen::RowMajor> S; // localPose1 frame/origin. 動かせない&接触力が発生する軸のみ抽出するselect matrix
   Eigen::SparseMatrix<double,Eigen::RowMajor> C; // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
   cnoid::VectorX ld;
@@ -64,18 +67,14 @@ public:
   bool initializeFromIdl(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const actkin_stabilizer::ContactParamIdl& idl); // idlから初期化
   void copyToIdl(actkin_stabilizer::ContactParamIdl& idl);
   void onExecute(double dt){
-    cnoid::Position pose1 = link1 ? link1->T() * localPose1 : localPose1;
-    this->prevLocalPose2 = link2 ? link2->T().inverse() * pose1 : pose1;
   }
   void onStartAutoBalancer(){
     cnoid::Position pose1 = link1 ? link1->T() * localPose1 : localPose1;
-    this->prevLocalPose2 = link2 ? link2->T().inverse() * pose1 : pose1;
+    this->localPose2 = link2 ? link2->T().inverse() * pose1 : pose1;
   }
   void onStartStabilizer(){
   }
 
-  // ActToGenFrameConverterで変更される
-  cnoid::Position prevLocalPose2; // link2 frame.
 };
 
 class Attention {

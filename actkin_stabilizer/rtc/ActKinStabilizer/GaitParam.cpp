@@ -388,7 +388,12 @@ void GaitParam::calcActiveObjectsContacts(const std::shared_ptr<Object>& robot, 
   for(std::unordered_map<std::string, std::shared_ptr<Object> >::const_iterator it = objects.begin(); it != objects.end(); it++){
     if(activeBodies.find(it->second->body) != activeBodies.end()) {
       activeObjects.push_back(it->second);
+    }else{
+      it->second->onStartAutoBalancer(); // 以後速度が上書きされなくなるので、0にresetしておく
     }
+  }
+  for(std::unordered_map<std::string, std::shared_ptr<Contact> >::const_iterator it = contacts.begin(); it != contacts.end(); it++){
+    it->second->onStartAutoBalancer(); // actToGenFrameConverterの制約が変化するので、goActualしておく
   }
 }
 

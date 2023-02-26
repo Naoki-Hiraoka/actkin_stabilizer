@@ -30,7 +30,7 @@ public:
 public:
   // robotとobjectsの位置姿勢と速度を更新する. actRobotRawとcontactsを用いて
   bool convertFrame(const GaitParam& gaitParam, double dt, // input
-                    std::shared_ptr<Object>& robot, std::vector<std::shared_ptr<Object> >& objects) const; // input & output
+                    std::shared_ptr<Object>& robot, std::vector<std::shared_ptr<Object> >& activeObjects) const; // input & output
 };
 
 #endif
