@@ -352,14 +352,16 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
   if(ports.m_actImuIn_.isNew()){
     ports.m_actImuIn_.read();
     if(rtmutil::isAllFinite(ports.m_actImu_.data)){
-      cnoid::Matrix3 imuR; eigen_rtm_conversions::orientationRTMToEigen(ports.m_actImu_.data, imuR);
+      actRobotRaw->calcForwardKinematics();
       cnoid::RateGyroSensorPtr imu = actRobotRaw->findDevice<cnoid::RateGyroSensor>("gyrometer");
-      imu->link()->R() = imuR * imu->R_local().inverse();
+      cnoid::Matrix3 imuR = imu->link()->R() * imu->R_local();
+      cnoid::Matrix3 actR; eigen_rtm_conversions::orientationRTMToEigen(ports.m_actImu_.data, actR);
+      actRobotRaw->rootLink()->R() = Eigen::Matrix3d(Eigen::AngleAxisd(actR) * Eigen::AngleAxisd(imuR.transpose() * actRobotRaw->rootLink()->R())); // 単純に3x3行列の空間でRを積算していると、だんだん数値誤差によって回転行列でなくなってしまう恐れがあるので念の為
     }else{
       std::cerr << "m_actImu is not finite!" << std::endl;
     }
   }
-  // actRobotRaw->calcForwardKinematics(); // actRobotRawのFKは不要. むしろimuRが消えてしまうのでしてはいけない
+  actRobotRaw->calcForwardKinematics();
 
 
   if(ports.m_selfCollisionIn_.isNew()) {

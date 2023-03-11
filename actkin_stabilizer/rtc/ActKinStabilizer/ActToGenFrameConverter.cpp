@@ -2,6 +2,7 @@
 #include "CnoidBodyUtil.h"
 #include "MathUtil.h"
 #include <cnoid/EigenUtil>
+#include <cnoid/RateGyroSensor>
 
 bool ActToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt, // input
                     std::shared_ptr<Object>& robot, std::vector<std::shared_ptr<Object> >& activeObjects) const // input & output
@@ -10,7 +11,7 @@ bool ActToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt,
     actrobotRawのqをそのままactRobotへ. dqもfilterしてからactRobotへ
 
     actRobotのXYZrpy. objectsのXYZrpy, qを探索変数として、
-    1 imu linkのroll pitch
+    0 imu linkのroll pitch
     1 contactsのlocalPose1とlocalPose2のS成分 (robotがからまない)
     2 contactsのlocalPose1とlocalPose2のS成分 (robotがからむ)
     が一致するようなものを求める.
@@ -18,101 +19,125 @@ bool ActToGenFrameConverter::convertFrame(const GaitParam& gaitParam, double dt,
     actRobotのv, w, cogVel. objectsのdq, v, w, cogVelを、filterによって求める.
   */
 
+  cnoid::Vector3 prevCog = robot->body->centerOfMass();
+  std::vector<cnoid::Vector3> prevObjectCog(activeObjects.size());
+  for(int i=0;i<activeObjects.size();i++) prevObjectCog[i] = activeObjects[i]->body->centerOfMass();
+
   // actrobotRawのqをそのままactRobotへ. dqもfilterしてからactRobotへ
   for(int i=0;i<gaitParam.actRobotRaw->numJoints();i++){
     robot->body->joint(i)->q() = gaitParam.actRobotRaw->joint(i)->q();
     robot->body->joint(i)->dq() = robot->dqAct[i].passFilter(gaitParam.actRobotRaw->joint(i)->dq(), dt);
+    robot->body->joint(i)->ddq() = 0.0;
   }
 
-  // actRobotのXYZ, yaw. objectsのXYZrpy, qを探索変数として、contactsのlocalPose1とlocalPose2のS成分が一致するようなものを求める.
-  // このとき、robotがからむcontactはからまないcontactよりも低優先度
+  /*
+    actRobotのXYZrpy. objectsのXYZrpy, qを探索変数として、
+    0 imu linkのroll pitch
+    1 contactsのlocalPose1とlocalPose2のS成分 (robotがからまない)
+    2 contactsのlocalPose1とlocalPose2のS成分 (robotがからむ)
+    が一致するようなものを求める.
+  */
 
-  // TODO
+  // actRobotのXYZrpy. objectsのXYZrpy, qを探索変数とする
+  std::vector<cnoid::LinkPtr> variables; variables.reserve(1+activeObjects.size());
+  std::vector<double> dqWeight; dqWeight.reserve(6+6*activeObjects.size());
+  variables.push_back(robot->body->rootLink());
+  for(int i=0;i<6;i++) dqWeight.push_back(1.0);
+  for(int j=0;j<activeObjects.size();j++){
+    variables.push_back(activeObjects[j]->body->rootLink());
+    for(int i=0;i<6;i++) dqWeight.push_back(1.0);
+    for(size_t i=0;i<activeObjects[j]->body->numJoints();i++){
+      variables.push_back(activeObjects[j]->body->joint(i));
+      dqWeight.push_back(1.0);
+    }
+  }
+
+  std::vector<std::shared_ptr<IK::IKConstraint> > ikConstraint0;
+  std::vector<std::shared_ptr<IK::IKConstraint> > ikConstraint1;
+  std::vector<std::shared_ptr<IK::IKConstraint> > ikConstraint2;
+
+  // imu
+  {
+    cnoid::RateGyroSensorPtr imu = robot->body->findDevice<cnoid::RateGyroSensor>("gyrometer");
+    this->imuConstraint->A_link() = imu->link();
+    this->imuConstraint->A_localpos() = imu->R_local();
+    cnoid::RateGyroSensorPtr imuRaw = gaitParam.actRobotRaw->findDevice<cnoid::RateGyroSensor>("gyrometer");
+    this->imuConstraint->B_link() = imuRaw->link();
+    this->imuConstraint->B_localpos() = imuRaw->R_local();
+    this->imuConstraint->eval_link() = imuRaw->link();
+    this->imuConstraint->eval_localR() = imuRaw->link()->R().transpose() * cnoid::Matrix3::Identity(); // world系
+    this->imuConstraint->maxError() << 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt;
+    this->imuConstraint->precision() << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0; // 強制的にIKをmax loopまで回す
+    this->imuConstraint->weight() << 0.0, 0.0, 0.0, 1.0, 1.0, 0.0; // roll pitch
+    ikConstraint0.push_back(this->imuConstraint);
+  }
+
+  // contact
+  for(int i=0;i<gaitParam.activeContacts.size();i++){
+    gaitParam.activeContacts[i]->ikPositionConstraint->A_link() = gaitParam.activeContacts[i]->link1;
+    gaitParam.activeContacts[i]->ikPositionConstraint->A_localpos() = gaitParam.activeContacts[i]->localPose1;
+    gaitParam.activeContacts[i]->ikPositionConstraint->B_link() = gaitParam.activeContacts[i]->link2;
+    gaitParam.activeContacts[i]->ikPositionConstraint->B_localpos() = gaitParam.activeContacts[i]->localPose2.value();
+    gaitParam.activeContacts[i]->ikPositionConstraint->eval_link() = gaitParam.activeContacts[i]->link1;
+    gaitParam.activeContacts[i]->ikPositionConstraint->eval_localR() = gaitParam.activeContacts[i]->localPose1.linear();
+    gaitParam.activeContacts[i]->ikPositionConstraint->maxError() << 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt, 10.0*dt;
+    gaitParam.activeContacts[i]->ikPositionConstraint->precision() << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0; // 強制的にIKをmax loopまで回す
+    gaitParam.activeContacts[i]->ikPositionConstraint->weight() << gaitParam.activeContacts[i]->axis;
+    if(gaitParam.activeContacts[i]->link1->body() == robot->body || gaitParam.activeContacts[i]->link2->body() == robot->body){
+      ikConstraint2.push_back(gaitParam.activeContacts[i]->ikPositionConstraint);
+    }else{
+      ikConstraint1.push_back(gaitParam.activeContacts[i]->ikPositionConstraint);
+    }
+  }
+
+  std::vector<std::vector<std::shared_ptr<IK::IKConstraint> > > constraints{ikConstraint0,ikConstraint1,ikConstraint2};
+  for(size_t i=0;i<constraints.size();i++){
+    for(size_t j=0;j<constraints[i].size();j++){
+      constraints[i][j]->debuglevel() = 0;//debuglevel
+    }
+  }
+  prioritized_inverse_kinematics_solver::IKParam param;
+  param.maxIteration = 1;
+  param.dqWeight = dqWeight;
+  param.wn = 1e-6;
+  param.we = 1e0;
+  param.debugLevel = 0;
+  param.dt = dt;
+  prioritized_inverse_kinematics_solver::solveIKLoop(variables,
+                                                     constraints,
+                                                     this->ikTasks,
+                                                     param
+                                                     );
 
   // actRobotのdv, dw, cogVel. objectsのdq, dv, dw, cogVelを、filterによって求める.
-  robot->body->rootLink()->v() = robot->actRootv.passFilter(robot->body->rootLink()->v());
-  robot->body->rootLink()->w() = robot->actRootw.passFilter(robot->body->rootLink()->w());
-  //robot->body->rootLink()->
+  robot->body->rootLink()->v() = robot->actRootv.passFilter(robot->body->rootLink()->v(), dt);
+  robot->body->rootLink()->w() = robot->actRootw.passFilter(robot->body->rootLink()->w(), dt);
+  robot->body->rootLink()->dv().setZero();
+  robot->body->rootLink()->dw().setZero();
+  robot->body->calcForwardKinematics(true, true);
+  robot->body->calcCenterOfMass();
+  for(int i=0;i<activeObjects.size();i++){
+    activeObjects[i]->body->rootLink()->v() = activeObjects[i]->actRootv.passFilter(activeObjects[i]->body->rootLink()->v(), dt);
+    activeObjects[i]->body->rootLink()->w() = activeObjects[i]->actRootw.passFilter(activeObjects[i]->body->rootLink()->w(), dt);
+    activeObjects[i]->body->rootLink()->dv().setZero();
+    activeObjects[i]->body->rootLink()->dw().setZero();
+    for(int i=0;i<activeObjects[i]->body->numJoints();i++){
+      activeObjects[i]->body->joint(i)->dq() = activeObjects[i]->dqAct[i].passFilter(activeObjects[i]->body->joint(i)->dq(), dt);
+      activeObjects[i]->body->joint(i)->ddq() = 0.0;
+    }
+    activeObjects[i]->body->calcForwardKinematics(true, true);
+    activeObjects[i]->body->calcCenterOfMass();
+  }
 
-
-  // cnoid::Vector3 actCogPrev = actRobot->centerOfMass();
-  // cnoid::Position actRootPrev = actRobot->rootLink()->T();
-
-  // {
-  //   // FootOrigin座標系を用いてactRobotRawをgenerate frameに投影しactRobotとする
-  //   cnoidbodyutil::copyRobotState(gaitParam.actRobotRaw, actRobot);
-  //   actRobot->rootLink()->R() = (actRobot->rootLink()->R() * cnoid::rotFromRpy(this->rpyOffset)).eval(); // rpyOffsetを適用
-  //   actRobot->calcForwardKinematics();
-  //   cnoid::DeviceList<cnoid::ForceSensor> actForceSensors(gaitParam.actRobotRaw->devices());
-  //   cnoid::DeviceList<cnoid::ForceSensor> actOriginForceSensors(actRobot->devices());
-  //   for(int i=0;i<actForceSensors.size();i++){
-  //     actOriginForceSensors[i]->F() = actForceSensors[i]->F();
-  //   }
-  //   double rlegweight = gaitParam.footstepNodesList[0].isSupportPhase[RLEG]? 1.0 : 0.0;
-  //   double llegweight = gaitParam.footstepNodesList[0].isSupportPhase[LLEG]? 1.0 : 0.0;
-  //   if(!gaitParam.footstepNodesList[0].isSupportPhase[RLEG] && !gaitParam.footstepNodesList[0].isSupportPhase[LLEG]) rlegweight = llegweight = 1.0;
-  //   cnoid::Position actrleg = actRobot->link(gaitParam.endEffectors[RLEG].parentLink)->T()*gaitParam.endEffectors[RLEG].localT;
-  //   cnoid::Position actlleg = actRobot->link(gaitParam.endEffectors[LLEG].parentLink)->T()*gaitParam.endEffectors[LLEG].localT;
-  //   cnoid::Position actFootMidCoords = mathutil::calcMidCoords(std::vector<cnoid::Position>{actrleg, actlleg},
-  //                                                              std::vector<double>{rlegweight, llegweight});
-  //   cnoid::Position actFootOriginCoords = mathutil::orientCoordToAxis(actFootMidCoords, cnoid::Vector3::UnitZ());
-  //   cnoid::Position genFootMidCoords = mathutil::calcMidCoords(std::vector<cnoid::Position>{gaitParam.abcEETargetPose[RLEG], gaitParam.abcEETargetPose[LLEG]},
-  //                                                              std::vector<double>{rlegweight, llegweight});  // 1周期前のabcTargetPoseを使っているが、abcTargetPoseは不連続に変化するものではないのでよい
-  //   cnoid::Position genFootOriginCoords = mathutil::orientCoordToAxis(genFootMidCoords, cnoid::Vector3::UnitZ());
-  //   cnoidbodyutil::moveCoords(actRobot, genFootOriginCoords, actFootOriginCoords);
-  //   actRobot->calcForwardKinematics();
-  //   actRobot->calcCenterOfMass();
-  // }
-
-  // std::vector<cnoid::Position> actEEPose(gaitParam.endEffectors.size(), cnoid::Position::Identity());
-  // std::vector<cnoid::Vector6> actEEWrench(gaitParam.endEffectors.size(), cnoid::Vector6::Zero());
-  // {
-  //   // 各エンドエフェクタのactualの位置・力を計算
-  //   for(int i=0;i<gaitParam.endEffectors.size(); i++){
-  //     actEEPose[i] = actRobot->link(gaitParam.endEffectors[i].parentLink)->T() * gaitParam.endEffectors[i].localT;
-  //     if(this->eeForceSensor[i] != ""){
-  //       cnoid::ForceSensorPtr sensor = actRobot->findDevice<cnoid::ForceSensor>(this->eeForceSensor[i]);
-  //       cnoid::Vector6 senF = sensor->F();
-  //       cnoid::Position senPose = sensor->link()->T() * sensor->T_local();
-  //       cnoid::Position eefTosenPose = gaitParam.actEEPose[i].inverse() * senPose;
-  //       cnoid::Vector6 eefF; // endeffector frame. endeffector origin.
-  //       eefF.head<3>() = eefTosenPose.linear() * senF.head<3>();
-  //       eefF.tail<3>() = eefTosenPose.linear() * senF.tail<3>() + eefTosenPose.translation().cross(eefF.head<3>());
-  //       actEEWrench[i].head<3>() = gaitParam.actEEPose[i].linear() * eefF.head<3>();
-  //       actEEWrench[i].tail<3>() = gaitParam.actEEPose[i].linear() * eefF.tail<3>();
-  //     }
-  //   }
-  // }
-
-  // cnoid::Vector3 actCogVel;
-  // cnoid::Vector6 actRootVel;
-  // {
-  //   bool genContactState_changed = false;
-  //   for(int i=0;i<NUM_LEGS;i++){
-  //     if(gaitParam.footstepNodesList[0].isSupportPhase[i] != gaitParam.prevSupportPhase[i]) genContactState_changed = true;
-  //   }
-  //   // actCogを計算
-  //   if(this->isInitial || genContactState_changed){
-  //     //座標系が飛んでいるので、gaitParam.actCogVel は前回の周期の値をそのままつかう
-  //     actCogVel = gaitParam.actCogVel.value();
-  //     actRootVel = gaitParam.actRootVel.value();
-  //   }else{
-  //     actCogVel = (actRobot->centerOfMass() - actCogPrev) / dt;
-  //     actRootVel.head<3>() = (actRobot->rootLink()->translation() - actRootPrev.translation()) / dt;
-  //     Eigen::AngleAxisd actRootdR(actRobot->rootLink()->R() * actRootPrev.linear().transpose()); // generate frame. rootlink origin.
-  //     actRootVel.tail<3>() = actRootdR.angle() / dt * actRootdR.axis();
-  //   }
-  // }
-
-  // o_actRootVel.passFilter(actRootVel, dt);
-  // actRobot->rootLink()->v() = o_actRootVel.value().head<3>();
-  // actRobot->rootLink()->w() = o_actRootVel.value().tail<3>();
-  // actRobot->calcForwardKinematics(true);
-
-  // o_actEEPose = actEEPose;
-  // o_actEEWrench = actEEWrench;
-  // o_actCog = actRobot->centerOfMass();
-  // o_actCogVel.passFilter(actCogVel, dt);
+  if(!this->isInitial){
+    // Body::calcTotalMomentumを使ってもいいが、こっちのほうが計算コストが安そう
+    cnoid::Vector3 cogVel = (robot->body->centerOfMass() - prevCog) / dt;
+    robot->actCogVel.passFilter(cogVel, dt);
+    for(int i=0;i<activeObjects.size();i++){
+      cnoid::Vector3 cogVel = (activeObjects[i]->body->centerOfMass() - prevObjectCog[i]) / dt;
+      activeObjects[i]->actCogVel.passFilter(cogVel, dt);
+    }
+  }
 
   this->isInitial = false;
   return true;

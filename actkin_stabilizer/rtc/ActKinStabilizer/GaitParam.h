@@ -10,6 +10,7 @@
 #include <cpp_filters/TwoPointInterpolator.h>
 #include <cpp_filters/FirstOrderLowPassFilter.h>
 #include <joint_limit_table/JointLimitTable.h>
+#include <ik_constraint/PositionConstraint.h>
 #include "FootGuidedController.h"
 #include <actkin_stabilizer/idl/ActKinStabilizerService.hh>
 
@@ -56,21 +57,26 @@ public:
   cnoid::LinkPtr link1{nullptr}; // nullptrならworld
   cnoid::Position localPose1{cnoid::Position::Identity()}; // link1 frame.
   cnoid::LinkPtr link2{nullptr}; // nullptrならworld
-  cnoid::Position localPose2{cnoid::Position::Identity()}; // link2 frame. 接触したときの初期値が入る
-  Eigen::SparseMatrix<double,Eigen::RowMajor> S; // localPose1 frame/origin. 動かせない&接触力が発生する軸のみ抽出するselect matrix
+  cpp_filters::TwoPointInterpolatorSE3 localPose2{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB}; // link2 frame. 接触したときの初期値が入る
+  cnoid::Vector6 axis{cnoid::Vector6::Ones()}; // localPose1 frame/origin. 動かせない&接触力が発生する軸のみ抽出する.
+  Eigen::SparseMatrix<double,Eigen::RowMajor> S; // localPose1 frame/origin. 動かせない&接触力が発生する軸のみ抽出するselect matrix. axisと重複
   Eigen::SparseMatrix<double,Eigen::RowMajor> C; // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
   cnoid::VectorX ld;
   cnoid::VectorX ud;
   cnoid::VectorX w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
 
 public:
+  mutable std::shared_ptr<IK::PositionConstraint> ikPositionConstraint = std::make_shared<IK::PositionConstraint>(); // キャッシュ. for ActToGenFrameConverter
+
+public:
   bool initializeFromIdl(const std::shared_ptr<Object>& robot, const std::unordered_map<std::string, std::shared_ptr<Object> >& objects, const actkin_stabilizer::ContactParamIdl& idl); // idlから初期化
   void copyToIdl(actkin_stabilizer::ContactParamIdl& idl);
   void onExecute(double dt){
+    this->localPose2.interpolate(dt);
   }
   void onStartAutoBalancer(){
     cnoid::Position pose1 = link1 ? link1->T() * localPose1 : localPose1;
-    this->localPose2 = link2 ? link2->T().inverse() * pose1 : pose1;
+    this->localPose2.reset(link2 ? link2->T().inverse() * pose1 : pose1);
   }
   void onStartStabilizer(){
   }

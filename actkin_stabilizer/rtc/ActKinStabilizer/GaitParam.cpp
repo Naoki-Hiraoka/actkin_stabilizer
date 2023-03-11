@@ -67,20 +67,21 @@ bool Contact::initializeFromIdl(const std::shared_ptr<Object>& robot, const std:
       return false;
     }
   }
-  int axis = 0; for(int a=0;a<idl.axis.length();a++) if(idl.axis[a]) axis++;
-  this->S = Eigen::SparseMatrix<double,Eigen::RowMajor>(axis,6);
-  axis = 0;
+  for(int a=0;a<idl.axis.length();a++) this->axis[a] = idl.axis[a] ? 1.0 : 0.0;
+  int num_axis = (this->axis.array() == 1.0).count();
+  this->S = Eigen::SparseMatrix<double,Eigen::RowMajor>(num_axis,6);
+  num_axis = 0;
   for(int a=0;a<idl.axis.length();a++) {
     if(idl.axis[a]) {
-      this->S.insert(axis,a) = 1.0;
-      axis++;
+      this->S.insert(num_axis,a) = 1.0;
+      num_axis++;
     }
   }
   if(!rtmutil::isAllFinite(idl.C)){ std::cerr << "contact C is not finite! " << std::endl; return false; }
   for(int row = 0; row < idl.C.length(); row++){
-    if(idl.C[row].length() != axis) { std::cerr << "contact C dimension mismatch! " << std::endl; return false; }
+    if(idl.C[row].length() != this->S.rows()) { std::cerr << "contact C dimension mismatch! " << std::endl; return false; }
   }
-  this->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(idl.C.length(),axis);
+  this->C = Eigen::SparseMatrix<double,Eigen::RowMajor>(idl.C.length(),this->S.rows());
   for(int row = 0; row < idl.C.length(); row++){
     for(int col = 0; col < idl.C[row].length(); col++){
       if(idl.C[row][col] != 0.0) {
@@ -93,7 +94,7 @@ bool Contact::initializeFromIdl(const std::shared_ptr<Object>& robot, const std:
   eigen_rtm_conversions::vectorRTMToEigen(idl.ld, this->ld);
   eigen_rtm_conversions::vectorRTMToEigen(idl.ud, this->ud);
   if(!rtmutil::isAllFinite(idl.w)){ std::cerr << "contact w is not finite! " << std::endl; return false; }
-  if(idl.w.length() != axis){ std::cerr << "contact w dimension mismatch! " << idl.w.length() << std::endl; return false; }
+  if(idl.w.length() != this->S.rows()){ std::cerr << "contact w dimension mismatch! " << idl.w.length() << std::endl; return false; }
   eigen_rtm_conversions::vectorRTMToEigen(idl.w, this->w);
   return true;
 }
@@ -107,12 +108,7 @@ void Contact::copyToIdl(actkin_stabilizer::ContactParamIdl& idl){
   eigen_rtm_conversions::poseEigenToRTM(this->localPose1, idl.localPose1);
   idl.obj2 = this->link2 ? this->link2->body()->name().c_str() : "";
   idl.link2 = this->link2 ? this->link2->name().c_str() : "";
-  idl.axis.length(6); for(int i=0;i<6;i++) idl.axis[i] = false;
-  for (int k=0; k < this->C.outerSize(); ++k){
-    for (Eigen::SparseMatrix<double,Eigen::RowMajor>::InnerIterator it(this->C,k); it; ++it){
-      if(it.value() != 0.0) idl.axis[it.col()] = true;
-    }
-  }
+  idl.axis.length(6); for(int i=0;i<6;i++) idl.axis[i] = this->axis[i] == 1.0;
   eigen_rtm_conversions::matrixEigenToRTM(this->C, idl.C);
   eigen_rtm_conversions::vectorEigenToRTM(this->ld, idl.ld);
   eigen_rtm_conversions::vectorEigenToRTM(this->ud, idl.ud);

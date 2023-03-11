@@ -4,6 +4,8 @@
 #include "GaitParam.h"
 #include <cnoid/Body>
 
+#include <prioritized_inverse_kinematics_solver/PrioritizedInverseKinematicsSolver.h>
+
 class ActToGenFrameConverter {
 public:
   // ActToGenFrameConverterだけでつかうパラメータ
@@ -14,6 +16,11 @@ public:
 protected:
   // 内部で変更されるパラメータ. startAutoBalancer時にリセットされる
   mutable bool isInitial = true;
+
+protected:
+  // 内部にヤコビアンの情報をキャッシュするが、クリアしなくても副作用はあまりない
+  mutable std::shared_ptr<IK::PositionConstraint> imuConstraint = std::make_shared<IK::PositionConstraint>();
+  mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > ikTasks;
 
 public:
   void init(GaitParam& gaitParam){
