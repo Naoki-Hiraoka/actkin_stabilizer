@@ -1,0 +1,84 @@
+#ifndef ActKinStabilizer_idl
+#define ActKinStabilizer_idl
+
+#include "ExtendedDataTypes.idl"
+
+module actkin_stabilizer_msgs
+{
+  struct RefContactIdl {
+
+  };
+
+  struct RefEEPosePointIdl {
+    double time; // time from start [s]
+    RTC::Pose3D pose; // world frame.
+    RTC::Velocity3D velocity; // world frame. local origin.
+    sequence<double, 6> wrench; // world frame. local origin.
+  };
+
+  struct RefEEPoseIdl {
+    string name;
+    string link;
+    RTC::Pose3D localPose; // link1 frame
+
+    // obj=="", link=="": world
+    // obj=="", link==[親joint名]: robotのlink
+    // obj=="", link=="CM": robotの重心
+    // obj==[obj名], link==[親joint名]: objectのlink
+    // obj==[obj名], link=="CM": objectの重心
+    // 片方が重心の場合、もう一方はworld以外不可.
+    string obj1;
+    string link1;
+    RTC::Pose3D localPose1; // link1 frame
+    string obj2;
+    string link2;
+    RTC::Pose3D localPose2; // link2 frame. goActualで修正される
+    sequence<double, 6> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
+    sequence<sequence<double, 6> > C; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
+    sequence<double> ld; // goActualで修正される
+    sequence<double> ud; // goActualで修正される
+    sequence<double> Kp; // - Kp * (C * 位置姿勢 - ld|ud) を、分解加速度制御の目標加速度として使う
+    sequence<double> Dp; // - Dp * C * 速度 を、分解加速度制御の目標加速度として使う
+    sequence<double> limitp; // Kp * (Cp * 位置姿勢 - ldp|udp)に対するlimit
+    sequence<double> weightp; // 分解加速度制御の重み. default1.0
+    long priority; // 分解加速度制御の優先度. 大きいほど高優先度
+    double horizon; // [s]. 0より大きいなら、MPCになる.(world-重心のみ可)
+    sequence<double> Kw; // - Kw * (C * 位置姿勢 - ld|ud) を、目標反力として使う
+    sequence<double> Dw; // - Dw * C * 速度 を、目標反力として使う
+    sequence<double> limitw; // Kw * (C * 位置姿勢 - ld|ud)に対するlimit
+    // 重心の場合、回転成分は無視する. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
+  }
+
+  const long RLEG = 0;
+  const long LLEG = 1;
+
+  struct LandingPositionIdl
+  {
+    double x;
+    double y;
+    double z;
+    double nx;
+    double ny;
+    double nz;
+    long l_r; // 0: right. 1: left. 現在支持脚
+  };
+
+  struct SteppableRegionIdl
+  {
+    sequence<sequence<double> > region;
+    long l_r; // 0: right. 1: left. 現在支持脚
+  };
+
+  struct TimedLandingPosition
+  {
+    RTC::Time tm;
+    LandingPositionIdl data;
+  };
+  struct TimedSteppableRegion
+  {
+    RTC::Time tm;
+    SteppableRegionIdl data;
+  };
+};
+
+#endif

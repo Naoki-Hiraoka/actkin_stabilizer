@@ -16,12 +16,11 @@
   <depend>cpp_filters</depend>
   <depend>choreonoid</depend>
   <depend>hrpsys_ros_bridge</depend>
-  <depend>ik_constraint</depend>
+  <depend>ik_constraint2</depend>
   <depend>prioritized_qp_osqp</depend>
   <depend>joint_limit_table</depend>
-  <depend>prioritized_inverse_kinematics_solver</depend>
-  <depend>ik_constraint_joint_limit_table</depend>
+  <depend>prioritized_inverse_kinematics_solver2</depend>
+  <depend>ik_constraint2_joint_limit_table</depend>
   <depend>collision_checker_msgs</depend>
-  <depend>auto_stabilizer_msgs</depend>
   <depend>eigen_rtm_conversions</depend>
 </package>
