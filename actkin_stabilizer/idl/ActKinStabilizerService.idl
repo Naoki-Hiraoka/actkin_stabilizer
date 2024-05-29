@@ -2,98 +2,10 @@
 #define ActKinStabilizerService_idl
 
 #include "ExtendedDataTypes.idl" // openrtm
+#include "actkin_stabilizer_msgs/ActkinStabilizer.idl"
 
 module actkin_stabilizer
 {
-  struct PosePointIdl{
-    RTC::Pose3D pose; // parent frame.
-    sequence<double, 6> velocity; // parent frame. local origin.
-    sequence<double, 6> acceleration; // parent frame. local origin.
-    double time; // time from prev [s]
-  };
-  struct VectorPointIdl{
-    sequence<double> vector; // parent frame. local origin.
-    double time; // time from prev [s]
-  };
-
-  struct ContactParamIdl{
-    string name;
-    unsigned long stateId; // 現在のstateId以外のstateIdを伴う指令は無視する
-    boolean remove; // trueならremoveする
-    // obj=="", link=="": world
-    // obj=="", link==[親joint名]: robotのlink
-    // obj==[obj名], link==[親joint名]: objectのlink
-    string obj1;
-    string link1;
-    RTC::Pose3D localPose1; // link1 frame.
-    string obj2;
-    string link2;
-    sequence<boolean, 6> axis; // localPose1 frame/origin. 動かせない&接触力が発生する軸のみtrue
-    sequence<sequence<double> > C; // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
-    sequence<double> ld;
-    sequence<double> ud;
-    sequence<double> w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
-  };
-
-  struct AttentionParamIdl{
-    string name;
-    unsigned long stateId; // 現在のstateId以外のstateIdを伴う指令は無視する
-    boolean remove; // trueならremoveする
-    // obj=="", link=="": world
-    // obj=="", link==[親joint名]: robotのlink
-    // obj=="", link=="CM": robotの重心
-    // obj==[obj名], link==[親joint名]: objectのlink
-    // obj==[obj名], link=="CM": objectの重心
-    // 片方が重心の場合、もう一方はworld以外不可.
-    string obj1;
-    string link1;
-    RTC::Pose3D localPose1; // link1 frame
-    string obj2;
-    string link2;
-    RTC::Pose3D localPose2; // link2 frame. goActualで修正される
-    sequence<double, 6> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
-    sequence<sequence<double, 6> > C; // localPose1 frame/origin. localpose1から見たlocalpose2の位置姿勢に関する制約
-    sequence<double> ld; // goActualで修正される
-    sequence<double> ud; // goActualで修正される
-    sequence<double> Kp; // - Kp * (C * 位置姿勢 - ld|ud) を、分解加速度制御の目標加速度として使う
-    sequence<double> Dp; // - Dp * C * 速度 を、分解加速度制御の目標加速度として使う
-    sequence<double> limitp; // Kp * (Cp * 位置姿勢 - ldp|udp)に対するlimit
-    sequence<double> weightp; // 分解加速度制御の重み. default1.0
-    long priority; // 分解加速度制御の優先度. 大きいほど高優先度
-    double horizon; // [s]. 0より大きいなら、MPCになる.(world-重心のみ可)
-    sequence<double> Kw; // - Kw * (C * 位置姿勢 - ld|ud) を、目標反力として使う
-    sequence<double> Dw; // - Dw * C * 速度 を、目標反力として使う
-    sequence<double> limitw; // Kw * (C * 位置姿勢 - ld|ud)に対するlimit
-    // 重心の場合、回転成分は無視する. MPCのとき、Kp[0] / Dp[0] をomegaとして使う.
-  };
-
-  struct AttentionDataIdl{
-    string name;
-    unsigned long stateId; // 現在のstateId以外のstateIdを伴う指令は無視する
-    sequence<PosePointIdl> localPose1; // link1 frame.
-    sequence<PosePointIdl> localPose2; // link2 frame.
-    sequence<VectorPointIdl> ld; // サイズはld,udと同じ
-    sequence<VectorPointIdl> ud;
-    sequence<VectorPointIdl> refWrench; // world frame. localPose origin. link1がlocalPose1の位置で受ける力. (link2はlocalPose2の位置で反対の力を受ける)
-  };
-
-  struct PrimitiveStateIdl{
-    // command: リストに含まれていないParamやDataは現状維持する
-    // state: この値をcommandとして送ると今と同じになる.
-    RTC::Time tm;
-    sequence<ContactParamIdl> contactParams;
-    sequence<AttentionParamIdl> attentionParams;
-    sequence<AttentionDataIdl> attentionDatas;
-  };
-
-  struct ObjectStateIdl{
-    RTC::Time tm; // command: not used.    state: 最後にstateが送られた時刻. 0ならまだ
-    string name; // ""ならrobot. robotはXYZ,yawのみ変更可
-    RTC::Pose3D pose; // parent frame. rootLinkの位置姿勢
-    sequence<double> q; // 各関節の角度
-  };
-  typedef sequence<ObjectStateIdl> ObjectStateIdlSeq;
-
   enum EmergencyCheckMode {
     NO_CHECK,
     CM
@@ -101,49 +13,69 @@ module actkin_stabilizer
 
   interface ActKinStabilizerService
   {
-    boolean startAutoBalancer();
-    boolean stopAutoBalancer();
-    boolean startStabilizer();
-    boolean stopStabilizer();
-
-    boolean setPrimitiveState(in PrimitiveStateIdl command); // リストに含まれていないParamやDataは現状維持する
-    boolean getPrimitiveState(out PrimitiveStateIdl command);
-    boolean resetPrimitiveState(in PrimitiveStateIdl command); // リストに含まれていないParamやDataは消える. stateIdを無視. stopStabilizer中にしか不可
-    boolean goActual(); // attentionDatasのpose2をactualへ. refWrenchを0へ.
-
-    boolean loadObject(in string name, in string file);
-    boolean unloadObject(in string name);
-
-    boolean setObjectState(in ObjectStateIdl obj); // 他のobjは現状維持する
-    boolean setObjectStates(in ObjectStateIdlSeq objs); // リストに含まれていないobjは現状維持する
-    boolean getObjectStates(out ObjectStateIdlSeq objs);
+    struct ContactableRegion {
+      string link; // URDF link name
+      RTC::Pose3D localPose; // link local frame
+      actkin_stabilizer_msgs::Region3D region; // localPose frame
+    };
 
     struct ActKinStabilizerParam
     {
       // ActKinStabilizer
       /// 含まれない場合、tauはrefの値をそのまま出力する(writeOutputPort時にref値で上書き). IKでは動かさない.
-      sequence<string> controllable_joints;
+      sequence<string> controllableJoints;
       /// Transition time [s] for start Stabilizer. 下限0.01[s]
-      double st_start_transition_time;
+      double startTransitionTime;
       /// Transition time [s] for stop Stabilizer. 下限0.01[s]
-      double st_stop_transition_time;
+      double stopTransitionTime;
 
       // ActToGenFrameConverter
       /// [roll, pitch, yaw]. rootLink Frame. Actual robotのrootLinkの姿勢に加えるオフセット. IMUの取り付け位置のオフセットを考慮するためのものではない(それはモデルファイルを変えれば良い). 全身のキャリブのずれなど次第に出てくるなにかしらのずれをごますためのもの. 本来このようなパラメータは必要ないのが望ましいが、実用上は確かに必要.
       sequence<double, 3> rpy_offset;
 
-      // Stabilizer
-      /// 0以上
-      double joint_p;
-      /// 0以上
-      double joint_d;
-      /// 要素数と順序はrobot->numJoints()と同じ. 0より大きい. 各関節の変位に対する重みの比. default 1. 動かしたくない関節は大きくする. 全く動かしたくないなら、controllable_jointsを使うこと
-      sequence<double> st_dq_weight;
+      // 接触可能点
+      ContactableRegion contactableRegion;
+      // contactのZ軸のthre (rad)
+      double normalAngle;
+
+      // EE 位置 Pゲイン. - K * 位置誤差を目標加速度とする. 0以上
+      double Kp;
+      // EE 位置 Dゲイン. - D * 相対速度を目標加速度とする. 0以上
+      double Dp;
+      // K * 位置誤差に対するlimit. 0以上.
+      double limitp;
+      // EE 姿勢 Pゲイン. - K * 姿勢誤差を目標加速度とする. 0以上
+      double Kr;
+      // EE 姿勢 Dゲイン. - D * 相対速度を目標加速度とする. 0以上
+      double Dr;
+      // K * 姿勢誤差に対するlimit. 0以上.
+      double limitr;
+
+      // horizonの最小時間[s]
+      double minHorizonTime;
+
+      // 関節Pゲイン. - K * 角度誤差を目標加速度とする. 0以上
+      double Kq;
+      // 関節Dゲイン. - D * 相対速度を目標加速度とする. 0以上
+      double Dq;
+      // K * 角度誤差に対するlimit. 0以上.
+      double limitq;
+      // 関節角度の重み. IKで動かしたくない関節は大きくする. 全く動かしたくないなら、controllableJointsを使うこと. 0以上. default 1.0
+      double wq;
 
     };
+
+    boolean startStabilizer();
+    boolean stopStabilizer();
+
     boolean setActKinStabilizerParam(in ActKinStabilizerParam i_param);
     boolean getActKinStabilizerParam(out ActKinStabilizerParam i_param);
 
+    boolean setRefEE(in actkin_stabilizer_msgs::RefEESequence refEEPose);
+    boolean setRefVRP(in actkin_stabilizer_msgs::RefVRPIdl refVRP);
+    boolean setRefContact(in actkin_stabilizer_msgs::RefContactSequence refContact);
+    boolean setRefq(in actkin_stabilizer_msgs::RefqIdl refq);
+    boolean setRefState(in actkin_stabilizer_msgs::RefStateIdl refState);
   };
 
 
