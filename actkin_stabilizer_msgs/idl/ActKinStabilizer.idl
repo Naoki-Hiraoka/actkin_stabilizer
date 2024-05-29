@@ -1,0 +1,83 @@
+#ifndef ActKinStabilizer_idl
+#define ActKinStabilizer_idl
+
+#include "ExtendedDataTypes.idl"
+
+module actkin_stabilizer_msgs
+{
+  struct Region3D {
+    sequence<sequence<double, 3> > C;
+    sequence<double> ld;
+    sequence<double> ud;
+  };
+
+  struct RefEEPointIdl {
+    double time; // time from start [s]
+    RTC::Pose3D pose; // global frame
+    RTC::Velocity3D velocity; // global frame. local origin.
+    sequence<double, 6> wrench; // global frame. local origin.
+  };
+
+  struct RefEEIdl {
+    string name;
+    string link; // URDF link name
+    RTC::Pose3D localPose; // link local frame
+    string frameId; // URDF link name. ""ならworld
+    RTC::Pose3D framePose; // frameId local
+    sequence<RefEEPointIdl> trajectory; // Reference trajectory, framePose local
+    Region3D posRegion; // Reference local frame/origin. Reference poseから見たEEの位置に関する制約.
+    sequence<boolean, 3> rotAxis; // Reference pose local. 拘束する軸のみtrue
+    double w; // 分解加速度制御の重み. default 1.0.
+  };
+
+  typedef sequence<RefEEIdl> RefEESequence;
+
+  struct RefVRPPointIdl {
+    double time; // time from start [s]
+    RTC::Point3D point; // world frame.
+  };
+
+  struct RefVRPIdl {
+    sequence<RefVRPPointIdl> trajectory; // Reference trajectory
+    double omega; // footguided controlのomega. sqrt(g/h). 0なら重心を制御しない
+    double w; // 分解加速度制御の重み. default 1.0.
+  };
+
+  struct RefContactIdl {
+    string name;
+    string link1; // URDF link name.
+    RTC::Pose3D localPose1; // link1 local
+    string link2; // URDF link name. ""はworld
+    RTC::Pose3D localPose2; // link2 local
+    sequence<boolean, 6> tolerance; // localPose2 local/origin. localPose2から見たlocalPose1の位置がこの値以上ならinvalid goal
+
+    sequence<boolean, 6> axis; // localPose1 local/origin. 動かせない&接触力が発生する軸のみtrue
+    Region3D region; // localPose1 local
+    sequence<sequence<double> > C; // localPose1 local. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
+    sequence<double> ld;
+    sequence<double> ud;
+    sequence<double> w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
+  };
+
+  typedef sequence<RefContactIdl> RefContactSequence;
+
+  struct refqPointIdl {
+    double time; //time from start[s]
+    sequence<double> q;
+    sequence<double> dq;
+  };
+
+  struct refqIdl {
+    sequence<RefqPointIdl> trajectory; // Reference trajectory
+  };
+
+  struct RefStateIdl {
+    RefEESequence refEEPose;
+    RefVRPIdl refVRP;
+    RefContactSequence refContact;
+    RefqIdl refq;
+  };
+
+};
+
+#endif
