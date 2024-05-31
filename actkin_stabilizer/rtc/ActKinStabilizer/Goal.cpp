@@ -17,7 +17,7 @@ namespace actkin_stabilizer{
   void Goal::updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefEESequence& m_refEEPose){
     std::unordered_map<std::string, std::shared_ptr<RefEE> > nextEEGoals;
     for(int i=0;i<m_refEEPose.length();i++){
-      std::string name = m_refEEPose[i].name;
+      std::string name = std::string(m_refEEPose[i].name);
       std::shared_ptr<RefEE> eeGoal;
       if(this->eeGoals.find(name) != this->eeGoals.end()){
         eeGoal = this->eeGoals[name];
@@ -31,10 +31,10 @@ namespace actkin_stabilizer{
         std::cerr << __FUNCTION__ << m_refEEPose[i].link << " not found" << std::endl;
         continue;
       }
-      eeGoal->link = state.linkNameMap.find(std::string(m_refEEPose[i].link)).second;
+      eeGoal->link = state.linkNameMap.find(std::string(m_refEEPose[i].link))->second;
 
       if(!rtm_data_tools::isAllFinite(m_refEEPose[i].localPose)){
-        std::cerr << __FUNCTION__ << "local_pose not finite" << std:::endl;
+        std::cerr << __FUNCTION__ << "local_pose not finite" << std::endl;
         continue;
       }
       eigen_rtm_conversions::poseRTMToEigen(m_refEEPose[i].localPose, eeGoal->localPose);
@@ -43,10 +43,10 @@ namespace actkin_stabilizer{
         std::cerr << __FUNCTION__ << m_refEEPose[i].frameId << " not found" << std::endl;
         continue;
       }
-      eeGoal->frameLink = state.linkNameMap.find(std::string(m_refEEPose[i].frameId)).second;
+      eeGoal->frameLink = state.linkNameMap.find(std::string(m_refEEPose[i].frameId))->second;
 
       if(!rtm_data_tools::isAllFinite(m_refEEPose[i].framePose)){
-        std::cerr << __FUNCTION__ << "local_pose not finite" << std:::endl;
+        std::cerr << __FUNCTION__ << "local_pose not finite" << std::endl;
         continue;
       }
       eigen_rtm_conversions::poseRTMToEigen(m_refEEPose[i].framePose, eeGoal->framePose);
@@ -97,17 +97,17 @@ namespace actkin_stabilizer{
         }
         time = std::max(0.0, m_refEEPose[i].trajectory[j].time);
         if(!rtm_data_tools::isAllFinite(m_refEEPose[i].trajectory[j].pose)){
-          std::cerr << __FUNCTION__ << "pose not finite" << std:::endl;
+          std::cerr << __FUNCTION__ << "pose not finite" << std::endl;
           continue;
         }
         eigen_rtm_conversions::poseRTMToEigen(m_refEEPose[i].trajectory[j].pose, goal_p);
         if(!rtm_data_tools::isAllFinite(m_refEEPose[i].trajectory[j].velocity)){
-          std::cerr << __FUNCTION__ << "velocity not finite" << std:::endl;
+          std::cerr << __FUNCTION__ << "velocity not finite" << std::endl;
           continue;
         }
         eigen_rtm_conversions::velocityRTMToEigen(m_refEEPose[i].trajectory[j].velocity, goal_dp);
         if(!rtm_data_tools::isAllFinite(m_refEEPose[i].trajectory[j].wrench)){
-          std::cerr << __FUNCTION__ << "wrench not finite" << std:::endl;
+          std::cerr << __FUNCTION__ << "wrench not finite" << std::endl;
           continue;
         }
         eigen_rtm_conversions::vectorRTMToEigen(m_refEEPose[i].trajectory[j].wrench, goal_f);
@@ -160,8 +160,8 @@ namespace actkin_stabilizer{
       if(vrpGoal->vrp.size()>0){
         vrpGoal->vrp[0].value(p,dp,ddp);
       }else{ // 今回始めて現れたvrp
-        p = state->robot->centerOfMass();
-        dp = state->cogVel->value();
+        p = state.robot->centerOfMass();
+        dp = state.cogVel.value();
         ddp.setZero();
       }
 
@@ -175,7 +175,7 @@ namespace actkin_stabilizer{
         }
         time = std::max(0.0, m_refVRP.trajectory[j].time);
         if(!rtm_data_tools::isAllFinite(m_refVRP.trajectory[j].point)){
-          std::cerr << __FUNCTION__ << "point not finite" << std:::endl;
+          std::cerr << __FUNCTION__ << "point not finite" << std::endl;
           continue;
         }
         eigen_rtm_conversions::pointRTMToEigen(m_refVRP.trajectory[j].point, goal_p);
@@ -193,7 +193,7 @@ namespace actkin_stabilizer{
         continue;
       }
 
-      nextVRPgoals.push_back(vrpGoal);
+      nextVRPGoals.push_back(vrpGoal);
     }
 
     std::swap(this->vrpGoals, nextVRPGoals);
@@ -216,10 +216,10 @@ namespace actkin_stabilizer{
       if(qGoal->q.size()>0){
         qGoal->q[0].value(q,dq,ddq);
       }else{ // 今回始めて現れたq
-        q = cnoid::VectorX(this->robot->numJoints());
-        for(int j=0;j<this->robot->numJoints();j++) q[j] = this->robot->joint(j)->q();
-        dq = cnoid::VectorX::Zero(this->robot->numJoints());
-        ddq = cnoid::VectorX::Zero(this->robot->numJoints());
+        q = cnoid::VectorX(state.robot->numJoints());
+        for(int j=0;j<state.robot->numJoints();j++) q[j] = state.robot->joint(j)->q();
+        dq = cnoid::VectorX::Zero(state.robot->numJoints());
+        ddq = cnoid::VectorX::Zero(state.robot->numJoints());
       }
 
       qGoal->q.clear();
@@ -233,30 +233,30 @@ namespace actkin_stabilizer{
         }
         time = std::max(0.0, m_refq.trajectory[j].time);
         if(!rtm_data_tools::isAllFinite(m_refq.trajectory[j].q)){
-          std::cerr << __FUNCTION__ << "q not finite" << std:::endl;
+          std::cerr << __FUNCTION__ << "q not finite" << std::endl;
           continue;
         }
-        if(m_refq.trajectory[j].q.length() != this->robot->numJoints()){
-          std::cerr << __FUNCTION__ << "q dimension mismatch" << std:::endl;
+        if(m_refq.trajectory[j].q.length() != state.robot->numJoints()){
+          std::cerr << __FUNCTION__ << "q dimension mismatch" << std::endl;
           continue;
         }
-        eigen_rtm_conversions::pointRTMToEigen(m_refq.trajectory[j].q, goal_q);
+        eigen_rtm_conversions::vectorRTMToEigen(m_refq.trajectory[j].q, goal_q);
         if(!rtm_data_tools::isAllFinite(m_refq.trajectory[j].dq)){
-          std::cerr << __FUNCTION__ << "dq not finite" << std:::endl;
+          std::cerr << __FUNCTION__ << "dq not finite" << std::endl;
           continue;
         }
-        if(m_refq.trajectory[j].dq.length() != this->robot->numJoints()){
-          std::cerr << __FUNCTION__ << "dq dimension mismatch" << std:::endl;
+        if(m_refq.trajectory[j].dq.length() != state.robot->numJoints()){
+          std::cerr << __FUNCTION__ << "dq dimension mismatch" << std::endl;
           continue;
         }
-        eigen_rtm_conversions::pointRTMToEigen(m_refq.trajectory[j].dq, goal_dq);
+        eigen_rtm_conversions::vectorRTMToEigen(m_refq.trajectory[j].dq, goal_dq);
 
         qGoal->q.emplace_back(q,dq,ddq,cpp_filters::HOFFARBIB);
         qGoal->q.back().setGoal(goal_q, goal_dq, time);
 
         q = goal_q;
         dq = goal_dq;
-        ddp = cnoid::Vector3::Zero();
+        ddq = cnoid::Vector3::Zero();
       }
 
       if(qGoal->q.size() == 0) {
@@ -264,14 +264,14 @@ namespace actkin_stabilizer{
         continue;
       }
 
-      nextqgoals.push_back(qGoal);
+      nextqGoals.push_back(qGoal);
     }
 
     std::swap(this->qGoals, nextqGoals);
 
   }
 
-  void Goal::updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefContactSequenceIdl& m_refContact){
+  void Goal::updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefContactSequence& m_refContact){
     std::unordered_map<std::string, std::shared_ptr<RefContact> > nextContactGoals;
 
     for(int i=0;i<m_refContact.length();i++){
@@ -289,10 +289,10 @@ namespace actkin_stabilizer{
         std::cerr << __FUNCTION__ << m_refContact[i].link1 << " not found" << std::endl;
         continue;
       }
-      contactGoal->link1 = state.linkNameMap.find(std::string(m_refContact[i].link1)).second;
+      contactGoal->link1 = state.linkNameMap.find(std::string(m_refContact[i].link1))->second;
 
       if(!rtm_data_tools::isAllFinite(m_refContact[i].localPose1)){
-        std::cerr << __FUNCTION__ << "localPose1 not finite" << std:::endl;
+        std::cerr << __FUNCTION__ << "localPose1 not finite" << std::endl;
         continue;
       }
       eigen_rtm_conversions::poseRTMToEigen(m_refContact[i].localPose1, contactGoal->localPose1);
@@ -301,41 +301,41 @@ namespace actkin_stabilizer{
         std::cerr << __FUNCTION__ << m_refContact[i].link2 << " not found" << std::endl;
         continue;
       }
-      contactGoal->link2 = state.linkNameMap.find(std::string(m_refContact[i].link2)).second;
+      contactGoal->link2 = state.linkNameMap.find(std::string(m_refContact[i].link2))->second;
 
       for(int j=0;j<6;j++) contactGoal->freeAxis[j] = m_refContact[i].freeAxis[j];
 
       if(!rtm_data_tools::isAllFinite(m_refContact[i].region.C) ||
          !rtm_data_tools::isAllFinite(m_refContact[i].region.ld) ||
          !rtm_data_tools::isAllFinite(m_refContact[i].region.ud)){
-        std::cerr << __FUNCTION__ << "region not finite" << std:::endl;
+        std::cerr << __FUNCTION__ << "region not finite" << std::endl;
         continue;
       }
       eigen_rtm_conversions::matrixRTMToEigen(m_refContact[i].region.C, contactGoal->region.C);
       eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].region.ld, contactGoal->region.ld);
       eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].region.ud, contactGoal->region.ud);
 
-      if(m_refContact[i].region.C.cols() != 3 ||
-         m_refContact[i].region.C.rows() != m_refContact[i].region.ld.rows() ||
-         m_refContact[i].region.C.rows() != m_refContact[i].region.ud.rows()){
-        std::cerr << __FUNCTION__ << "region dimension mismatch" << std:::endl;
+      if(contactGoal->region.C.cols() != 3 ||
+         contactGoal->region.C.rows() != contactGoal->region.ld.rows() ||
+         contactGoal->region.C.rows() != contactGoal->region.ud.rows()){
+        std::cerr << __FUNCTION__ << "region dimension mismatch" << std::endl;
         continue;
       }
 
       if(!rtm_data_tools::isAllFinite(m_refContact[i].wrenchC) ||
          !rtm_data_tools::isAllFinite(m_refContact[i].wrenchld) ||
          !rtm_data_tools::isAllFinite(m_refContact[i].wrenchud)){
-        std::cerr << __FUNCTION__ << "wrench not finite" << std:::endl;
+        std::cerr << __FUNCTION__ << "wrench not finite" << std::endl;
         continue;
       }
       eigen_rtm_conversions::matrixRTMToEigen(m_refContact[i].wrenchC, contactGoal->wrenchC);
       eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].wrenchld, contactGoal->wrenchld);
       eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].wrenchud, contactGoal->wrenchud);
 
-      if(m_refContact[i].wrenchC.cols() != 6 ||
-         m_refContact[i].wrenchC.rows() != m_refContact[i].wrenchld.rows() ||
-         m_refContact[i].wrenchC.rows() != m_refContact[i].wrenchud.rows()){
-        std::cerr << __FUNCTION__ << "region dimension mismatch" << std:::endl;
+      if(contactGoal->wrenchC.cols() != 6 ||
+         contactGoal->wrenchC.rows() != contactGoal->wrenchld.rows() ||
+         contactGoal->wrenchC.rows() != contactGoal->wrenchud.rows()){
+        std::cerr << __FUNCTION__ << "region dimension mismatch" << std::endl;
         continue;
       }
 

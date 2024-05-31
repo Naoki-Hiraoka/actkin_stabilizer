@@ -5,7 +5,6 @@
 #include <cnoid/ValueTree>
 #include <cnoid/EigenUtil>
 #include "MathUtil.h"
-#include "RTMUtil.h"
 #include "CnoidBodyUtil.h"
 #include <limits>
 #include <eigen_rtm_conversions/eigen_rtm_conversions.h>
@@ -29,7 +28,7 @@ ActKinStabilizer::Ports::Ports() :
   m_dqActIn_("dqAct", m_dqAct_),
   m_actBasePoseIn_("actBasePoseIn", m_actBasePose_),
   m_actBaseVelIn_("actBaseVelIn", m_actBaseVel_),
-  m_contactStateIn_("contactStateIn", m_contactState_),
+  m_actContactStateIn_("actContactStateIn", m_actContactState_),
   m_selfCollisionIn_("selfCollisionIn", m_selfCollision_),
 
   m_tauOut_("tauOut", m_tau_),

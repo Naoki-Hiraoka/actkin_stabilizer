@@ -26,7 +26,7 @@ module actkin_stabilizer_msgs
     RTC::Pose3D framePose; // frameId local
     sequence<RefEEPointIdl> trajectory; // Reference trajectory, framePose local
     sequence<boolean, 6> freeAxis; // Reference pose local. 拘束する軸のみtrue
-    long prioritiy; // 分解加速度制御の優先度. 0 or 1. 0なら普通. 1は重心と同じ. default 1.
+    long priority; // 分解加速度制御の優先度. 0 or 1. 0なら普通. 1は重心と同じ. default 1.
 
     //Region3D posRegion; // Reference local frame/origin. Reference poseから見たEEの位置に関する制約. Cのサイズが非ゼロのとき有効になり、axisの並進成分を上書きする.
   };

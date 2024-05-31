@@ -16,22 +16,6 @@ namespace actkin_stabilizer {
     cnoid::VectorX ud = cnoid::VectorX::Zero(3);
   };
 
-  class Task {
-  public:
-    // 干渉回避など
-    virtual const std::vector<std::shared_ptr<aik_constraint::Constraint> >& firstPriorityTasks() {
-      return std::vector<std::shared_ptr<aik_constraint::Constraint> >();
-    }
-    // エンドエフェクタなど
-    virtual const std::vector<std::shared_ptr<aik_constraint::Constraint> >& secondPriorityTasks() {
-      return std::vector<std::shared_ptr<aik_constraint::Constraint> >();
-    }
-    // 関節角度など
-    virtual const std::vector<std::shared_ptr<aik_constraint::Constraint> >& thildPriorityTasks() {
-      return std::vector<std::shared_ptr<aik_constraint::Constraint> >();
-    }
-  };
-
   class RefEE {
   public:
     std::string name;
@@ -95,10 +79,10 @@ namespace actkin_stabilizer {
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefEESequence& m_refEEPose);
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefVRPIdl& m_refVRP);
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefqIdl& m_refq);
-    void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefContactSequenceIdl& m_refContact);
+    void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefContactSequence& m_refContact);
 
     // startStabilizer時に呼ばれる
-    void onStartStabilizer();
+    void onStartStabilizer(const State& state, const actkin_stabilizer_msgs::RefStateIdl& m_refState);
 
     // MODE_ST中のみ呼ばれる. 各goalをdtだけ補間する.
     void interpolate(double dt);

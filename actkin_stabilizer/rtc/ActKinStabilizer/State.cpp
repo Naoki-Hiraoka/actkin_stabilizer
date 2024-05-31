@@ -2,6 +2,8 @@
 #include <unordered_set>
 #include <eigen_rtm_conversions/eigen_rtm_conversions.h>
 #include <rtm_data_tools/rtm_data_tools.h>
+#include <cnoid/src/Body/InverseDynamics.h>
+#include <cnoid/Jacobian>
 
 namespace actkin_stabilizer {
   void State::init(const cnoid::BodyPtr& robot_){
@@ -14,7 +16,7 @@ namespace actkin_stabilizer {
       double maxTorque =  std::max(climit * gearRatio * torqueConst, 0.0);
       if(maxTorque > 0.0) joint->setJointEffortRange(-maxTorque,maxTorque);
     }
-    this->softMaxToque.resize(this->robot->numJoints(),std::numeric_limits<double>::max());
+    this->softMaxTorque.resize(this->robot->numJoints(),std::numeric_limits<double>::max());
     this->jointControllable.resize(this->robot->numJoints(),true);
     this->jointLimitTables.resize(this->robot->numJoints());
 
@@ -37,7 +39,7 @@ namespace actkin_stabilizer {
     if(m_qAct.data.length() == this->robot->numJoints()){
       if(rtm_data_tools::isAllFinite(m_qAct.data)){
         for(int i=0;i<m_qAct.data.length();i++){
-          ithis->robot->joint(i)->q() = m_qAct.data[i];
+          this->robot->joint(i)->q() = m_qAct.data[i];
         }
       }else{
         std::cerr << "m_qAct is not finite!" << std::endl;
@@ -46,7 +48,7 @@ namespace actkin_stabilizer {
     if(m_dqAct.data.length() == this->robot->numJoints()){
       if(rtm_data_tools::isAllFinite(m_dqAct.data)){
         for(int i=0;i<m_dqAct.data.length();i++){
-          ithis->robot->joint(i)->dq() = m_dqAct.data[i];
+          this->robot->joint(i)->dq() = m_dqAct.data[i];
         }
       }else{
         std::cerr << "m_dqAct is not finite!" << std::endl;
@@ -68,7 +70,7 @@ namespace actkin_stabilizer {
     for(int i=0;i<this->robot->numJoints();i++) {
       this->robot->joint(i)->ddq() = 0.0;
     }
-    for(int i=0;i<this->robot->numLink();i++) {
+    for(int i=0;i<this->robot->numLinks();i++) {
       this->robot->link(i)->F_ext().setZero();
     }
     this->robot->calcForwardKinematics(true,true);
@@ -79,7 +81,7 @@ namespace actkin_stabilizer {
 
     {
       Eigen::MatrixXd CMJ;
-      cnoid::calcCMJacobian(this->robot,nullptr,A_CMJ); // [joint root]の順
+      cnoid::calcCMJacobian(this->robot,nullptr,CMJ); // [joint root]の順
       cnoid::VectorX dq(this->robot->numJoints()+6);
       for(int i=0;i<this->robot->numJoints();i++) dq[i] = this->robot->joint(i)->dq();
       dq.segment<3>(this->robot->numJoints()) = this->robot->rootLink()->v();
@@ -91,24 +93,24 @@ namespace actkin_stabilizer {
   void State::updateContactFromIdl(const contact_state_msgs::TimedContactSeq& m_actContactState){
     this->contacts.clear();
     for(int i=0;i<m_actContactState.data.length();i++){
-      Contact contact;
+      std::shared_ptr<Contact> contact = std::make_shared<Contact>();
       if(this->linkNameMap.find(std::string(m_actContactState.data[i].link1)) == this->linkNameMap.end()){
-        std::cerr << __FUNCTION__ << m_actContactState.data[i].link1 << " not found" << std:::endl;
+        std::cerr << __FUNCTION__ << m_actContactState.data[i].link1 << " not found" << std::endl;
         continue;
       }
-      contact.link1 = this->linkNameMap(std::string(m_actContactState.data[i].link1));
+      contact->link1 = this->linkNameMap[std::string(m_actContactState.data[i].link1)];
       if(!rtm_data_tools::isAllFinite(m_actContactState.data[i].local_pose)){
-        std::cerr << __FUNCTION__ << "local_pose not finite" << std:::endl;
+        std::cerr << __FUNCTION__ << "local_pose not finite" << std::endl;
         continue;
       }
-      eigen_rtm_conversions::poseRTMToEigen(m_actContactState.data[i].local_pose, contact.localPose1);
+      eigen_rtm_conversions::poseRTMToEigen(m_actContactState.data[i].local_pose, contact->localPose1);
       if(this->linkNameMap.find(std::string(m_actContactState.data[i].link2)) == this->linkNameMap.end()){
-        std::cerr << __FUNCTION__ << m_actContactState.data[i].link2 << " not found" << std:::endl;
+        std::cerr << __FUNCTION__ << m_actContactState.data[i].link2 << " not found" << std::endl;
         continue;
       }
-      contact.link2 = this->linkNameMap(std::string(m_actContactState.data[i].link2));
-      contact.freeX = m_actContactState.data[i].free_x;
-      contact.freeY = m_actContactState.data[i].free_y;
+      contact->link2 = this->linkNameMap[std::string(m_actContactState.data[i].link2)];
+      contact->freeX = m_actContactState.data[i].free_x;
+      contact->freeY = m_actContactState.data[i].free_y;
       this->contacts.push_back(contact);
     }
   }

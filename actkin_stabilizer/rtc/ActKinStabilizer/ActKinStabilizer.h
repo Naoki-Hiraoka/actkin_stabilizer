@@ -26,6 +26,7 @@
 
 #include "ActKinStabilizerService_impl.h"
 #include "State.h"
+#include "Goal.h"
 #include "ResolvedAccelerationController.h"
 #include "WrenchDistributor.h"
 
@@ -84,92 +85,40 @@ protected:
       MODE_IDLE -> startStabilizer() -> MODE_ST
       MODE_ST -> stopStabilizer() -> MODE_IDLE
 
-      MODE_IDLEの場合は何もしない.
-      MODE_STの場合は与えられた目標を解釈し、
+      MODE_IDLEの場合はstateのみ受け取り他は何もしない.
+      MODE_STの場合はgoalも受け取り、torqueを出力する.
       切り替えの連続性を担保するにはこのRTCではない.
-      MODE_SYNC_TO*の時間はtransition_timeの時間をかけて遷移するが、少なくとも1周期はMODE_SYNC_TO*を経由する.
-      MODE_SYNC_TO*では、基本的に次のMODEと同じ処理が行われるが、出力時に前回のMODEの出力から補間するような軌道に加工されることで出力の連続性を確保する
-      補間している途中で別のmodeに切り替わることは無いので、そこは安心してプログラムを書いてよい(例外はonActivated). 同様に、remainTimeが突然減ったり増えたりすることもない
-
-      MODE_ABC: contactに基づきhrpsys_odom座標系を更新する
-      MODE_ST: トルク制御指令値を求める
      */
-    enum Mode_enum{ MODE_IDLE, MODE_SYNC_TO_ABC, MODE_ABC, MODE_SYNC_TO_ST, MODE_ST, MODE_SYNC_TO_STOPST, MODE_SYNC_TO_IDLE};
-    enum Transition_enum{ START_ABC, STOP_ABC, START_ST, STOP_ST};
-    double abc_start_transition_time, abc_stop_transition_time, st_start_transition_time, st_stop_transition_time;
+    enum Mode_enum{ MODE_IDLE, MODE_ST};
+    enum Transition_enum{ START_ST, STOP_ST};
   private:
     Mode_enum current, previous, next;
-    cpp_filters::TwoPointInterpolator<double> transitionInterpolator = cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::LINEAR); // SYNC_TO状態のとき、0 -> 1. SYNC_TO以外のとき、常に1
   public:
-    ControlMode(){ reset(); abc_start_transition_time = 0.5; abc_stop_transition_time = 2.0; st_start_transition_time = 0.5; st_stop_transition_time = 0.5;}
-    void reset(){ current = previous = next = MODE_IDLE; transitionInterpolator.reset(1.0);}
+    ControlMode(){ reset(); }
+    void reset(){ current = previous = next = MODE_IDLE; }
     bool setNextTransition(const Transition_enum request){
       switch(request){
-      case START_ABC:
-        if(current == MODE_IDLE){ next = MODE_SYNC_TO_ABC; return true; }else{ return false; }
-      case STOP_ABC:
-        if(current == MODE_ABC){ next = MODE_SYNC_TO_IDLE; return true; }else{ return false; }
       case START_ST:
-        if(current == MODE_ABC){ next = MODE_SYNC_TO_ST; return true; }else{ return false; }
+        if(current == MODE_IDLE){ next = MODE_ST; return true; }else{ return false; }
       case STOP_ST:
-        if(current == MODE_ST){ next = MODE_SYNC_TO_STOPST; return true; }else{ return false; }
+        if(current == MODE_ST){ next = MODE_IDLE; return true; }else{ return false; }
       default:
         return false;
       }
     }
     void update(double dt){
-      if(current != next) {
-        previous = current; current = next;
-        switch(current){
-        case MODE_SYNC_TO_ABC:
-          transitionInterpolator.reset(0.0);
-          transitionInterpolator.setGoal(1.0, abc_start_transition_time); break;
-        case MODE_SYNC_TO_IDLE:
-          transitionInterpolator.reset(0.0);
-          transitionInterpolator.setGoal(1.0, abc_stop_transition_time); break;
-        case MODE_SYNC_TO_ST:
-          transitionInterpolator.reset(0.0);
-          transitionInterpolator.setGoal(1.0, st_start_transition_time); break;
-        case MODE_SYNC_TO_STOPST:
-          transitionInterpolator.reset(0.0);
-          transitionInterpolator.setGoal(1.0, st_stop_transition_time); break;
-        default:
-          break;
-        }
-      }else{
-        previous = current;
-        transitionInterpolator.interpolate(dt);
-        if(transitionInterpolator.isEmpty()){
-          switch(current){
-          case MODE_SYNC_TO_ABC:
-            current = next = MODE_ABC; break;
-          case MODE_SYNC_TO_IDLE:
-            current = next = MODE_IDLE; break;
-          case MODE_SYNC_TO_ST:
-            current = next = MODE_ST; break;
-          case MODE_SYNC_TO_STOPST:
-            current = next = MODE_ABC; break;
-          default:
-            break;
-          }
-        }
-      }
+      previous = current; current = next;
     }
-    double remainTime() const{ return transitionInterpolator.remain_time();}
-    double transitionRatio() const{ return transitionInterpolator.value();}
     Mode_enum now() const{ return current; }
     Mode_enum pre() const{ return previous; }
-    bool isABCRunning() const{ return (current==MODE_SYNC_TO_ABC) || (current==MODE_ABC) || (current==MODE_SYNC_TO_ST) || (current==MODE_ST) || (current==MODE_SYNC_TO_STOPST) ;}
-    bool isSyncToABCInit() const{ return (current != previous) && (current==MODE_SYNC_TO_ABC);}
-    bool isSyncToIdleInit() const{ return (current != previous) && (current==MODE_SYNC_TO_IDLE);}
-    bool isSyncToSTInit() const{ return (current != previous) && (current==MODE_SYNC_TO_ST);}
-    bool isSyncToStopSTInit() const{ return (current != previous) && (current==MODE_SYNC_TO_STOPST);}
-    bool isSTRunning() const{ return (current==MODE_SYNC_TO_ST) || (current==MODE_ST) ;}
+    bool isSyncToSTInit() const{ return (current != previous) && (current==MODE_ST);}
+    bool isSyncToIdleInit() const{ return (current != previous) && (current==MODE_IDLE);}
+    bool isSTRunning() const{ return (current==MODE_ST) ;}
   };
   ControlMode mode_;
-  cpp_filters::TwoPointInterpolatorSE3 outputRootPoseFilter_{cnoid::Position::Identity(),cnoid::Vector6::Zero(),cnoid::Vector6::Zero(),cpp_filters::HOFFARBIB};
 
-  State gaitParam_;
+  State state_;
+  Goal goal_;
   ResolvedAccelerationController resolvedAccelerationController_;
   WrenchDistributor wrenchDistributor_;
 

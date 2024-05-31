@@ -13,6 +13,8 @@
 #include <ik_constraint2/PositionConstraint.h>
 #include "FootGuidedController.h"
 #include <actkin_stabilizer/idl/ActKinStabilizerService.hh>
+#include <contact_state_msgs/idl/ContactState.hh>
+
 
 namespace actkin_stabilizer {
 
