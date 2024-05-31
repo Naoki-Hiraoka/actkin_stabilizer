@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   rtmbuild2
   roscpp
   geometry_msgs
+  actkin_stabilizer_msgs
   )
 
 ################################################
@@ -24,11 +25,11 @@ add_message_files(
 
 # catkin_python_setup()
 # initialize rtmbuild (generate_messages is called)
-rtmbuild2_init(rtmbuild2 geometry_msgs)  # ここにidlとmsgが依存する外部パッケージを書く
+rtmbuild2_init(rtmbuild2 geometry_msgs actkin_stabilizer_msgs)  # ここにidlとmsgが依存する外部パッケージを書く
 
 catkin_package(
 #  INCLUDE_DIRS include
-  LIBRARIES ActKinStabilizerServiceSkel ActKinStabilizerServiceStub PrimitiveStateSkel PrimitiveStateStub
+  LIBRARIES ActKinStabilizerServiceSkel ActKinStabilizerServiceStub
   CATKIN_DEPENDS rtmbuild2
   DEPENDS openrtm_aist
 )

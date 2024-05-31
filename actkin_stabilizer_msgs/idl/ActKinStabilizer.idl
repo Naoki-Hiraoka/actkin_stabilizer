@@ -1,5 +1,5 @@
-#ifndef ActKinStabilizer_idl
-#define ActKinStabilizer_idl
+#ifndef ACtKinStabilizerMsgs_ActKinStabilizer_idl
+#define ACtKinStabilizerMsgs_ActKinStabilizer_idl
 
 #include "ExtendedDataTypes.idl"
 
@@ -12,7 +12,7 @@ module actkin_stabilizer_msgs
   };
 
   struct RefEEPointIdl {
-    double time; // time from start [s]
+    double time; // time from prev [s]
     RTC::Pose3D pose; // global frame
     RTC::Velocity3D velocity; // global frame. local origin.
     sequence<double, 6> wrench; // global frame. local origin.
@@ -25,22 +25,22 @@ module actkin_stabilizer_msgs
     string frameId; // URDF link name. ""ならworld
     RTC::Pose3D framePose; // frameId local
     sequence<RefEEPointIdl> trajectory; // Reference trajectory, framePose local
-    Region3D posRegion; // Reference local frame/origin. Reference poseから見たEEの位置に関する制約.
-    sequence<boolean, 3> rotAxis; // Reference pose local. 拘束する軸のみtrue
-    double w; // 分解加速度制御の重み. default 1.0.
+    sequence<boolean, 6> freeAxis; // Reference pose local. 拘束する軸のみtrue
+    long prioritiy; // 分解加速度制御の優先度. 0 or 1. 0なら普通. 1は重心と同じ. default 1.
+
+    //Region3D posRegion; // Reference local frame/origin. Reference poseから見たEEの位置に関する制約. Cのサイズが非ゼロのとき有効になり、axisの並進成分を上書きする.
   };
 
   typedef sequence<RefEEIdl> RefEESequence;
 
   struct RefVRPPointIdl {
-    double time; // time from start [s]
+    double time; // time from prev [s]
     RTC::Point3D point; // world frame.
   };
 
   struct RefVRPIdl {
     sequence<RefVRPPointIdl> trajectory; // Reference trajectory
     double omega; // footguided controlのomega. sqrt(g/h). 0なら重心を制御しない
-    double w; // 分解加速度制御の重み. default 1.0.
   };
 
   struct RefContactIdl {
@@ -48,26 +48,24 @@ module actkin_stabilizer_msgs
     string link1; // URDF link name.
     RTC::Pose3D localPose1; // link1 local
     string link2; // URDF link name. ""はworld
-    RTC::Pose3D localPose2; // link2 local
-    sequence<boolean, 6> tolerance; // localPose2 local/origin. localPose2から見たlocalPose1の位置がこの値以上ならinvalid goal
 
-    sequence<boolean, 6> axis; // localPose1 local/origin. 動かせない&接触力が発生する軸のみtrue
+    sequence<boolean, 6> freeAxis; // localPose1 local/origin. 動かせない&接触力が発生する軸のみfalse
     Region3D region; // localPose1 local
-    sequence<sequence<double> > C; // localPose1 local. link1がlink2から受ける力に関する接触力制約. 列はaxisがtrueの軸数に対応
-    sequence<double> ld;
-    sequence<double> ud;
-    sequence<double> w; // localPose1 frame/origin. link1がlink2から受ける力に関する重み. axisがtrueの軸数に対応
+    sequence<sequence<double, 6> > wrenchC; // localPose1 local. link1がlink2から受ける力に関する接触力制約.
+    sequence<double> wrenchld;
+    sequence<double> wrenchud;
+    //sequence<double, 6> wrenchw; // localPose1 frame/origin. link1がlink2から受ける力に関する重み.
   };
 
   typedef sequence<RefContactIdl> RefContactSequence;
 
-  struct refqPointIdl {
-    double time; //time from start[s]
+  struct RefqPointIdl {
+    double time; //time from prev[s]
     sequence<double> q;
     sequence<double> dq;
   };
 
-  struct refqIdl {
+  struct RefqIdl {
     sequence<RefqPointIdl> trajectory; // Reference trajectory
   };
 

@@ -1,7 +1,7 @@
 #ifndef LEGCOORDSGENERATOR_H
 #define LEGCOORDSGENERATOR_H
 
-#include "GaitParam.h"
+#include "State.h"
 
 class LegCoordsGenerator{
 public:
@@ -23,13 +23,13 @@ public:
   }
 
 public:
-  void initLegCoords(const GaitParam& gaitParam,
+  void initLegCoords(const State& gaitParam,
                      std::vector<footguidedcontroller::LinearTrajectory<cnoid::Vector3> >& o_refZmpTraj, std::vector<cpp_filters::TwoPointInterpolatorSE3>& o_genCoords) const;
 
-  void calcLegCoords(const GaitParam& gaitParam, double dt, bool useActStates,
-                     std::vector<footguidedcontroller::LinearTrajectory<cnoid::Vector3> >& o_refZmpTraj, std::vector<cpp_filters::TwoPointInterpolatorSE3>& o_genCoords, std::vector<GaitParam::SwingState_enum>& o_swingState) const;
+  void calcLegCoords(const State& gaitParam, double dt, bool useActStates,
+                     std::vector<footguidedcontroller::LinearTrajectory<cnoid::Vector3> >& o_refZmpTraj, std::vector<cpp_filters::TwoPointInterpolatorSE3>& o_genCoords, std::vector<State::SwingState_enum>& o_swingState) const;
 
-  void calcEETargetPose(const GaitParam& gaitParam, double dt,
+  void calcEETargetPose(const State& gaitParam, double dt,
                         std::vector<cnoid::Position>& o_abcEETargetPose, std::vector<cnoid::Vector6>& o_abcEETargetVel, std::vector<cnoid::Vector6>& o_abcEETargetAcc) const;
 
 };

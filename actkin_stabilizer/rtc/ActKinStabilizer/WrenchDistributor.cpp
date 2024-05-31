@@ -4,7 +4,7 @@
 #include <cnoid/EigenUtil>
 #include <cnoid/src/Body/InverseDynamics.h>
 
-bool WrenchDistributor::execWrenchDistributor(const GaitParam& gaitParam, double dt,
+bool WrenchDistributor::execWrenchDistributor(const State& gaitParam, double dt,
                                               std::shared_ptr<Object>& robot) const{
 
   // - 現在のactual重心位置から、目標重心加速を計算
@@ -55,8 +55,8 @@ bool WrenchDistributor::execWrenchDistributor(const GaitParam& gaitParam, double
   return true;
 }
 
-// bool Stabilizer::calcCogAcc(const GaitParam& gaitParam, double dt, bool useActState,
-//                             GaitParam::DebugData& debugData, //for Log
+// bool Stabilizer::calcCogAcc(const State& gaitParam, double dt, bool useActState,
+//                             State::DebugData& debugData, //for Log
 //                             cnoid::Vector3& o_tgtActCogAcc, cnoid::Vector3& o_genNextCog, cnoid::Vector3& o_genNextCogVel, cnoid::Vector3& o_genNextCogAcc, cnoid::Vector3& o_genNextForce) const{
 
 //   // genCog (mode_st中も計算する. refToGenFrameConverterで使うので)
@@ -85,7 +85,7 @@ bool WrenchDistributor::execWrenchDistributor(const GaitParam& gaitParam, double
 //   return true;
 // }
 
-// bool Stabilizer::calcZmp(const GaitParam& gaitParam, const cnoid::Vector3& cog, const cnoid::Vector3& DCM, const std::vector<cnoid::Position>& EEPose, const bool& useSoftLimit,
+// bool Stabilizer::calcZmp(const State& gaitParam, const cnoid::Vector3& cog, const cnoid::Vector3& DCM, const std::vector<cnoid::Position>& EEPose, const bool& useSoftLimit,
 //                          cnoid::Vector3& o_zmp) const{
 //   cnoid::Vector3 tgtZmp;
 //   if(gaitParam.footstepNodesList[0].isSupportPhase[RLEG] || gaitParam.footstepNodesList[0].isSupportPhase[LLEG]){
@@ -124,7 +124,7 @@ bool WrenchDistributor::execWrenchDistributor(const GaitParam& gaitParam, double
 //   return true;
 // }
 
-// bool Stabilizer::calcResolvedAccelerationControl(const GaitParam& gaitParam, double dt, const cnoid::Vector3& tgtCogAcc/*generate座標系*/, const cnoid::Vector3& genNextCog, bool useActState,
+// bool Stabilizer::calcResolvedAccelerationControl(const State& gaitParam, double dt, const cnoid::Vector3& tgtCogAcc/*generate座標系*/, const cnoid::Vector3& genNextCog, bool useActState,
 //                                                  cnoid::BodyPtr& actRobotTqc, cnoid::BodyPtr& genRobot) const{
 //   // actRobotTqcのq,dqにactualの値を入れる
 //   {
@@ -203,7 +203,7 @@ bool WrenchDistributor::execWrenchDistributor(const GaitParam& gaitParam, double
 //         ikConstraint2.push_back(this->aikEEPositionConstraint[i]);
 //       }else if(i < NUM_LEGS &&
 //                gaitParam.isManualControlMode[i].getGoal() == 0.0){ // 遊脚
-//         if(gaitParam.swingState[i] == GaitParam::DOWN_PHASE){
+//         if(gaitParam.swingState[i] == State::DOWN_PHASE){
 //           this->aikEEPositionConstraint[i]->pgain() = this->ee_landing_K[i];
 //           this->aikEEPositionConstraint[i]->dgain() = this->ee_landing_D[i];
 //         }else{
@@ -506,7 +506,7 @@ bool WrenchDistributor::execWrenchDistributor(const GaitParam& gaitParam, double
 //   return true;
 // }
 
-// bool Stabilizer::calcWrench(const GaitParam& gaitParam, const cnoid::Vector3& genNextForce, bool useActState,
+// bool Stabilizer::calcWrench(const State& gaitParam, const cnoid::Vector3& genNextForce, bool useActState,
 //                             std::vector<cnoid::Vector6>& o_tgtEEWrench, cnoid::BodyPtr& actRobotTqc) const{
 
 //   cnoid::Vector6 tgtSupWrench = cnoid::Vector6::Zero(); // ルートリンクが支持脚から受ける必要がある外力. generate frame. cog origin.

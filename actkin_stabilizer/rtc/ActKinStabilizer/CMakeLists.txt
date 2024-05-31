@@ -6,18 +6,19 @@ set(CMAKE_BUILD_TYPE Release)
 add_definitions(-Wno-deprecated)
 
 find_package(catkin REQUIRED COMPONENTS
-  ik_constraint
+  ik_constraint2
   prioritized_qp_osqp
-  prioritized_inverse_kinematics_solver
+  prioritized_inverse_kinematics_solver2
   cpp_filters
-  ik_constraint_joint_limit_table
+  ik_constraint2_joint_limit_table
   joint_limit_table
   collision_checker_msgs
-  auto_stabilizer_msgs
+  actkin_stabilizer_msgs
   aik_constraint
   aik_constraint_joint_limit_table
   prioritized_acc_inverse_kinematics_solver
   eigen_rtm_conversions
+  rtm_data_tools
   )
 find_package(choreonoid REQUIRED)
 
@@ -37,11 +38,11 @@ link_directories(
 add_library(ActKinStabilizer SHARED
   ActKinStabilizer.cpp
   ActKinStabilizerService_impl.cpp
-  ActToGenFrameConverter.cpp
   ResolvedAccelerationController.cpp
   WrenchDistributor.cpp
   MathUtil.cpp
-  GaitParam.cpp
+  State.cpp
+  Goal.cpp
   )
 target_link_libraries(ActKinStabilizer
   ${catkin_LIBRARIES}

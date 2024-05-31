@@ -1,7 +1,7 @@
 #ifndef WrenchDistributor_H
 #define WrenchDistributor_H
 
-#include "GaitParam.h"
+#include "State.h"
 #include <prioritized_qp_osqp/prioritized_qp_osqp.h>
 #include <cnoid/JointPath>
 
@@ -20,7 +20,7 @@ public:
   double joint_D = 1.0; // 0以上
   std::vector<cpp_filters::TwoPointInterpolator<double> > aikdqWeight; // 要素数と順序はrobot->numJoints()と同じ. 0より大きい. 各関節の速度に対するダンピング項の比. default 1. 動かしたくない関節は大きくする. 全く動かしたくないなら、controllable_jointsを使うこと. resolved acceleration control用
 
-  void init(GaitParam& gaitParam){
+  void init(State& gaitParam){
     aikdqWeight.resize(gaitParam.robot->body->numJoints(), cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::HOFFARBIB));
 
     aikEEPositionConstraint.clear();
@@ -59,18 +59,18 @@ protected:
   mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > aikTasks;
 
 public:
-  bool execWrenchDistributor(const GaitParam& gaitParam, double dt,
+  bool execWrenchDistributor(const State& gaitParam, double dt,
                              std::shared_ptr<Object>& robot) const;
 
 protected:
-  // bool calcCogAcc(const GaitParam& gaitParam, double dt, bool useActState,
-  //                 GaitParam::DebugData& debugData, //for Log
+  // bool calcCogAcc(const State& gaitParam, double dt, bool useActState,
+  //                 State::DebugData& debugData, //for Log
   //                 cnoid::Vector3& o_tgtCogAcc/*generate座標系*/, cnoid::Vector3& o_genNextCog, cnoid::Vector3& o_genNextCogVel, cnoid::Vector3& o_genNextCogAcc, cnoid::Vector3& o_genNextForce) const;
-  // bool calcZmp(const GaitParam& gaitParam, const cnoid::Vector3& cog, const cnoid::Vector3& DCM, const std::vector<cnoid::Position>& EEPose, const bool& useSoftLimit,
+  // bool calcZmp(const State& gaitParam, const cnoid::Vector3& cog, const cnoid::Vector3& DCM, const std::vector<cnoid::Position>& EEPose, const bool& useSoftLimit,
   //              cnoid::Vector3& o_zmp) const;
-  // bool calcResolvedAccelerationControl(const GaitParam& gaitParam, double dt, const cnoid::Vector3& tgtCogAcc/*generate座標系*/, const cnoid::Vector3& genNextCog, bool useActState,
+  // bool calcResolvedAccelerationControl(const State& gaitParam, double dt, const cnoid::Vector3& tgtCogAcc/*generate座標系*/, const cnoid::Vector3& genNextCog, bool useActState,
   //                                      cnoid::BodyPtr& actRobotTqc, cnoid::BodyPtr& o_genRobot) const;
-  // bool calcWrench(const GaitParam& gaitParam, const cnoid::Vector3& genNextForce, bool useActState,
+  // bool calcWrench(const State& gaitParam, const cnoid::Vector3& genNextForce, bool useActState,
   //                 std::vector<cnoid::Vector6>& o_tgtEEWrench /* 要素数EndEffector数. generate座標系. EndEffector origin*/, cnoid::BodyPtr& actRobotTqc) const;
 };
 

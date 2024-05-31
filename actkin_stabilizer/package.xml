@@ -15,7 +15,6 @@
   <depend>rtmbuild2</depend>
   <depend>cpp_filters</depend>
   <depend>choreonoid</depend>
-  <depend>hrpsys_ros_bridge</depend>
   <depend>ik_constraint2</depend>
   <depend>prioritized_qp_osqp</depend>
   <depend>joint_limit_table</depend>
@@ -23,4 +22,5 @@
   <depend>ik_constraint2_joint_limit_table</depend>
   <depend>collision_checker_msgs</depend>
   <depend>eigen_rtm_conversions</depend>
+  <depend>actkin_stabilizer_msgs</depend>
 </package>

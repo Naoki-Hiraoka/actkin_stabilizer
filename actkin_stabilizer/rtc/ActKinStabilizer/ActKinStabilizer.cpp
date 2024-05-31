@@ -25,57 +25,54 @@ static const char* ActKinStabilizer_spec[] = {
 };
 
 ActKinStabilizer::Ports::Ports() :
-  m_qRefIn_("qRef", m_qRef_),
-  m_refTauIn_("refTauIn", m_refTau_),
-  m_refBasePosIn_("refBasePosIn", m_refBasePos_),
   m_qActIn_("qAct", m_qAct_),
   m_dqActIn_("dqAct", m_dqAct_),
-  m_actImuIn_("actImuIn", m_actImu_),
+  m_actBasePoseIn_("actBasePoseIn", m_actBasePose_),
+  m_actBaseVelIn_("actBaseVelIn", m_actBaseVel_),
+  m_contactStateIn_("contactStateIn", m_contactState_),
   m_selfCollisionIn_("selfCollisionIn", m_selfCollision_),
-  m_primitiveCommandIn_("primitiveCommandIn", m_primitiveCommand_),
 
-  m_genTauOut_("genTauOut", m_genTau_),
-  m_actBasePoseOut_("actBasePoseOut", m_actBasePose_),
-  m_actBaseTformOut_("actBaseTformOut", m_actBaseTform_),
-  m_actBasePosOut_("actBasePosOut", m_actBasePos_),
-  m_actBaseRpyOut_("actBaseRpyOut", m_actBaseRpy_),
-  m_objectStatesOut_("objectStatesOut", m_objectStates_),
-  m_primitiveStateOut_("primitiveStateOut", m_primitiveState_),
+  m_tauOut_("tauOut", m_tau_),
 
-  m_actCogOut_("actCogOut", m_actCog_),
+  m_ActKinStabilizerServicePort_("ActKinStabilizerService") {
 
-  m_ActKinStabilizerServicePort_("ActKinStabilizerService"){
+  m_actBasePose_.data.position.x = 0.0;
+  m_actBasePose_.data.position.y = 0.0;
+  m_actBasePose_.data.position.z = 0.0;
+  m_actBasePose_.data.orientation.r = 0.0;
+  m_actBasePose_.data.orientation.p = 0.0;
+  m_actBasePose_.data.orientation.y = 0.0;
+  m_actBaseVel_.data.vx = 0.0;
+  m_actBaseVel_.data.vy = 0.0;
+  m_actBaseVel_.data.vz = 0.0;
+  m_actBaseVel_.data.vr = 0.0;
+  m_actBaseVel_.data.vp = 0.0;
+  m_actBaseVel_.data.va = 0.0;
+}
+
+void ActKinStabilizer::Ports::onInitialize(ActKinStabilizer* component) {
+  component->addInPort("qAct", this->m_qActIn_);
+  component->addInPort("dqAct", this->m_dqActIn_);
+  component->addInPort("actBasePoseIn", this->m_actBasePoseIn_);
+  component->addInPort("actBaseVelIn", this->m_actBaseVelIn_);
+  component->addInPort("actContactStateIn", this->m_actContactStateIn_);
+  component->addInPort("selfCollisionIn", this->m_selfCollisionIn_);
+  component->addOutPort("tauOut", this->m_tauOut_);
+
+  this->m_ActKinStabilizerServicePort_.registerProvider("service0", "ActKinStabilizerService", this->m_service0_);
+  component->addPort(this->m_ActKinStabilizerServicePort_);
+  return;
 }
 
 ActKinStabilizer::ActKinStabilizer(RTC::Manager* manager) : RTC::DataFlowComponentBase(manager),
-  ports_(),
-  debugLevel_(0)
+  ports_()
 {
   this->ports_.m_service0_.setComp(this);
 }
 
 RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   std::cerr << "[" << m_profile.instance_name << "] onInitialize()" << std::endl;
-
-  // add ports
-  this->addInPort("qRef", this->ports_.m_qRefIn_);
-  this->addInPort("refTauIn", this->ports_.m_refTauIn_);
-  this->addInPort("refBasePosIn", this->ports_.m_refBasePosIn_);
-  this->addInPort("qAct", this->ports_.m_qActIn_);
-  this->addInPort("dqAct", this->ports_.m_dqActIn_);
-  this->addInPort("actImuIn", this->ports_.m_actImuIn_);
-  this->addInPort("selfCollisionIn", this->ports_.m_selfCollisionIn_);
-  this->addInPort("primitiveCommandIn", this->ports_.m_primitiveCommandIn_);
-  this->addOutPort("genTauOut", this->ports_.m_genTauOut_);
-  this->addOutPort("actBasePoseOut", this->ports_.m_actBasePoseOut_);
-  this->addOutPort("actBaseTformOut", this->ports_.m_actBaseTformOut_);
-  this->addOutPort("actBasePosOut", this->ports_.m_actBasePosOut_);
-  this->addOutPort("actBaseRpyOut", this->ports_.m_actBaseRpyOut_);
-  this->addOutPort("objectStatesOut", this->ports_.m_objectStatesOut_);
-  this->addOutPort("primitiveStateOut", this->ports_.m_primitiveStateOut_);
-  this->addOutPort("actCogOut", this->ports_.m_actCogOut_);
-  this->ports_.m_ActKinStabilizerServicePort_.registerProvider("service0", "ActKinStabilizerService", this->ports_.m_service0_);
-  this->addPort(this->ports_.m_ActKinStabilizerServicePort_);
+  this->ports_.onInitialize();
 
   {
     // load robot model
@@ -251,9 +248,9 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
         this->gaitParam_.attentions[attention->name] = attention;
       }
 
-      GaitParam::calcActiveObjectsContacts(this->gaitParam_.robot, this->gaitParam_.objects, this->gaitParam_.contacts, // input
+      State::calcActiveObjectsContacts(this->gaitParam_.robot, this->gaitParam_.objects, this->gaitParam_.contacts, // input
                                            this->gaitParam_.activeObjects, this->gaitParam_.activeContacts); // output
-      GaitParam::calcPrioritizedAttentions(this->gaitParam_.attentions, // input
+      State::calcPrioritizedAttentions(this->gaitParam_.attentions, // input
                                            this->gaitParam_.prioritizedAttentions); // output
     }
   }
@@ -270,7 +267,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
 }
 
 // static function
-bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<GaitParam::Collision>& selfCollision, std::unordered_map<std::string, std::shared_ptr<Contact> >& contacts, std::unordered_map<std::string, std::shared_ptr<Attention> >& attentions, std::vector<std::shared_ptr<Object> >& activeObjects, std::vector<std::shared_ptr<Contact> >& activeContacts, std::vector<std::vector<std::shared_ptr<Attention> > >& prioritizedAttentions){
+bool ActKinStabilizer::readInPortData(const double& dt, const State& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<State::Collision>& selfCollision, std::unordered_map<std::string, std::shared_ptr<Contact> >& contacts, std::unordered_map<std::string, std::shared_ptr<Attention> >& attentions, std::vector<std::shared_ptr<Object> >& activeObjects, std::vector<std::shared_ptr<Contact> >& activeContacts, std::vector<std::vector<std::shared_ptr<Attention> > >& prioritizedAttentions){
   bool qRef_updated = false;
   if(ports.m_qRefIn_.isNew()){
     ports.m_qRefIn_.read();
@@ -412,7 +409,7 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
       }
     }
     if(contacts_changed){
-      GaitParam::calcActiveObjectsContacts(gaitParam.robot, gaitParam.objects, contacts, // input
+      State::calcActiveObjectsContacts(gaitParam.robot, gaitParam.objects, contacts, // input
                                            activeObjects, activeContacts); // output
     }
 
@@ -436,7 +433,7 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
       }
     }
     if(attentions_changed){
-      GaitParam::calcPrioritizedAttentions(attentions, // input
+      State::calcPrioritizedAttentions(attentions, // input
                                            prioritizedAttentions); // output
     }
 
@@ -454,7 +451,7 @@ bool ActKinStabilizer::readInPortData(const double& dt, const GaitParam& gaitPar
 }
 
 // static function
-bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const GaitParam& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter){
+bool ActKinStabilizer::writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const State& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter){
   {
     // tau
     ports.m_genTau_.tm = ports.m_qRef_.tm;
@@ -646,28 +643,6 @@ RTC::ReturnCode_t ActKinStabilizer::onFinalize(){ return RTC::RTC_OK; }
 
 
 
-bool ActKinStabilizer::startAutoBalancer(){
-  if(this->mode_.setNextTransition(ControlMode::START_ABC)){
-    std::cerr << "[" << m_profile.instance_name << "] start auto balancer mode" << std::endl;
-    while (this->mode_.now() != ControlMode::MODE_ABC) usleep(1000);
-    usleep(1000);
-    return true;
-  }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] auto balancer is already started" << std::endl;
-    return false;
-  }
-}
-bool ActKinStabilizer::stopAutoBalancer(){
-  if(this->mode_.setNextTransition(ControlMode::STOP_ABC)){
-    std::cerr << "[" << m_profile.instance_name << "] stop auto balancer mode" << std::endl;
-    while (this->mode_.now() != ControlMode::MODE_IDLE) usleep(1000);
-    usleep(1000);
-    return true;
-  }else{
-    std::cerr << "[" << this->m_profile.instance_name << "] auto balancer is already stopped or stabilizer is running" << std::endl;
-    return false;
-  }
-}
 bool ActKinStabilizer::startStabilizer(void){
   if(this->mode_.setNextTransition(ControlMode::START_ST)){
     std::cerr << "[" << m_profile.instance_name << "] start ST" << std::endl;
@@ -689,34 +664,6 @@ bool ActKinStabilizer::stopStabilizer(void){
     std::cerr << "[" << this->m_profile.instance_name << "] Please start AutoBalancer" << std::endl;
     return false;
   }
-}
-
-bool ActKinStabilizer::setPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command){
-  return true;
-}
-bool ActKinStabilizer::getPrimitiveState(actkin_stabilizer::PrimitiveStateIdl& command){
-  return true;
-}
-bool ActKinStabilizer::resetPrimitiveState(const actkin_stabilizer::PrimitiveStateIdl& command){
-  return true;
-}
-bool ActKinStabilizer::goActual(){
-  return true;
-}
-bool ActKinStabilizer::loadObject(const std::string& name, const std::string& file){
-  return true;
-}
-bool ActKinStabilizer::unloadObject(const std::string& name){
-  return true;
-}
-bool ActKinStabilizer::setObjectState(const actkin_stabilizer::ObjectStateIdl& obj){
-  return true;
-}
-bool ActKinStabilizer::setObjectStates(const actkin_stabilizer::ObjectStateIdlSeq& objs){
-  return true;
-}
-bool ActKinStabilizer::getObjectStates(actkin_stabilizer::ObjectStateIdlSeq& objs){
-  return true;
 }
 
 bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param){
