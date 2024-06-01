@@ -275,7 +275,7 @@ namespace actkin_stabilizer{
     std::unordered_map<std::string, std::shared_ptr<RefContact> > nextContactGoals;
 
     for(int i=0;i<m_refContact.length();i++){
-      std::string name = m_refContact[i].name;
+      std::string name = std::string(m_refContact[i].name);
       std::shared_ptr<RefContact> contactGoal;
       if(this->contactGoals.find(name) != this->contactGoals.end()){
         contactGoal = this->contactGoals[name];
@@ -346,13 +346,40 @@ namespace actkin_stabilizer{
 
   }
 
-  void Goal::onStartStabilizer(const State& state, const actkin_stabilizer_msgs::RefStateIdl& m_refState){
+  void Goal::onStartStabilizer(){
     this->eeGoals.clear();
     this->vrpGoals.clear();
     this->qGoals.clear();
     this->contactGoals.clear();
-    this->updateFromIdl(state, m_refState);
     return;
+  }
+
+  void Goal::interpolate(double dt){
+    for(std::unordered_map<std::string, std::shared_ptr<RefEE> >::iterator it = this->eeGoals.begin(); it!=this->eeGoals.end(); it++){
+      if(it->second->pose[0].isEmpty() && it->second->pose.size() > 0){
+        it->second->pose.erase(it->second->pose.begin());
+      }
+      it->second->pose[0].interpolate(dt);
+      if(it->second->wrench[0].isEmpty() && it->second->wrench.size() > 0){
+        it->second->wrench.erase(it->second->wrench.begin());
+      }
+      it->second->wrench[0].interpolate(dt);
+    }
+
+    for(int i=0;i<this->vrpGoals.size();i++){
+      if(this->vrpGoals[i]->vrp[0].isEmpty() && this->vrpGoals[i]->vrp.size() > 0){
+        this->vrpGoals[i]->vrp.erase(this->vrpGoals[i]->vrp.begin());
+      }
+      this->vrpGoals[i]->vrp[0].interpolate(dt);
+    }
+
+    for(int i=0;i<this->qGoals.size();i++){
+      if(this->qGoals[i]->q[0].isEmpty() && this->qGoals[i]->q.size() > 0){
+        this->qGoals[i]->q.erase(this->qGoals[i]->q.begin());
+      }
+      this->qGoals[i]->q[0].interpolate(dt);
+    }
+
   }
 };
 

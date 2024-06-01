@@ -79,7 +79,7 @@ namespace actkin_stabilizer {
     // startStabilizer時に呼ばれる
     void onStartStabilizer();
 
-    // MODE_IDLE中もMODE_ST中も呼ばれる
+    // MODE_ST中のみ呼ばれる
     void updateRobotFromIdl(const RTC::TimedDoubleSeq& m_qAct, const RTC::TimedDoubleSeq& m_dqAct, const RTC::TimedPose3D& m_actBasePose, const RTC::TimedVelocity3D& m_actBaseVel, double dt);
     void updateContactFromIdl(const contact_state_msgs::TimedContactSeq& m_actContactState);
 

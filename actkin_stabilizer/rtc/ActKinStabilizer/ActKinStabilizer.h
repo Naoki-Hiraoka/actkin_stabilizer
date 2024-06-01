@@ -28,7 +28,6 @@
 #include "State.h"
 #include "Goal.h"
 #include "ResolvedAccelerationController.h"
-#include "WrenchDistributor.h"
 
 class ActKinStabilizer : public RTC::DataFlowComponentBase{
 public:
@@ -54,9 +53,6 @@ protected:
     Ports();
     void onInitialize(ActKinStabilizer* component);
 
-    actkin_stabilizer_msgs::RefStateIdl m_refState_;
-    RTC::InPort<actkin_stabilizer_msgs::RefStateIdl> m_refStateIn_;
-
     RTC::TimedDoubleSeq m_qAct_;
     RTC::InPort<RTC::TimedDoubleSeq> m_qActIn_;
     RTC::TimedDoubleSeq m_dqAct_;
@@ -67,6 +63,9 @@ protected:
     RTC::InPort<RTC::TimedVelocity3D> m_actBaseVelIn_;
     contact_state_msgs::TimedContactSeq m_actContactState_;
     RTC::InPort<contact_state_msgs::TimedContactSeq> m_actContactStateIn_;
+
+    actkin_stabilizer_msgs::RefStateIdl m_refState_;
+    RTC::InPort<actkin_stabilizer_msgs::RefStateIdl> m_refStateIn_;
 
     collision_checker_msgs::TimedCollisionSeq m_selfCollision_; // generate frame. genRobotの自己干渉の最近傍点
     RTC::InPort<collision_checker_msgs::TimedCollisionSeq> m_selfCollisionIn_;
@@ -106,7 +105,7 @@ protected:
         return false;
       }
     }
-    void update(double dt){
+    void update(){
       previous = current; current = next;
     }
     Mode_enum now() const{ return current; }
@@ -117,17 +116,20 @@ protected:
   };
   ControlMode mode_;
 
-  State state_;
-  Goal goal_;
+  actkin_stabilizer::State state_;
+  actkin_stabilizer::Goal goal_;
   ResolvedAccelerationController resolvedAccelerationController_;
-  WrenchDistributor wrenchDistributor_;
 
 protected:
   // utility functions
   bool getProperty(const std::string& key, std::string& ret);
 
-  static bool readInPortData(const double& dt, const State& gaitParam, const ActKinStabilizer::ControlMode& mode, ActKinStabilizer::Ports& ports, cnoid::BodyPtr refRobotRaw, cnoid::BodyPtr actRobotRaw, std::vector<State::Collision>& selfCollision, std::unordered_map<std::string, std::shared_ptr<Contact> >& contacts, std::unordered_map<std::string, std::shared_ptr<Attention> >& attentions, std::vector<std::shared_ptr<Object> >& activeObjects, std::vector<std::shared_ptr<Contact> >& activeContacts, std::vector<std::vector<std::shared_ptr<Attention> > >& prioritizedAttentions);
-  static bool writeOutPortData(ActKinStabilizer::Ports& ports, const ActKinStabilizer::ControlMode& mode, double dt, const State& gaitParam, cpp_filters::TwoPointInterpolatorSE3& outputRootPoseFilter);
+  static bool readInPortDataForState(ActKinStabilizer::Ports& ports, const std::string& instance_name, const double& dt,
+                                     actkin_stabilizer::State& state);
+  static bool readInPortDataForGoal(ActKinStabilizer::Ports& ports, const std::string& instance_name, const double& dt, const actkin_stabilizer::State& state,
+                                    actkin_stabilizer::Goal& goal);
+  static bool writeOutPortData(const actkin_stabilizer::State& state, const ActKinStabilizer::ControlMode& mode,
+                               ActKinStabilizer::Ports& ports);
 
 };
 

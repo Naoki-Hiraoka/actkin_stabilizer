@@ -32,6 +32,7 @@ namespace actkin_stabilizer {
   };
 
   void State::onStartStabilizer(){
+    this->cogVel.reset(cnoid::Vector3::Zero());
     return;
   }
 

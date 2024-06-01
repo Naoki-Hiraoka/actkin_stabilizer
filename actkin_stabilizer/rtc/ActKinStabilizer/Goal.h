@@ -29,24 +29,17 @@ namespace actkin_stabilizer {
     int priority = 1; // 0 or 1. 0ならふつう. 1は重心と同じ
     std::vector<cpp_filters::TwoPointInterpolatorSE3> pose; // 必ずサイズは1以上
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector6> > wrench; // 必ずサイズは1以上
-  public:
-    bool interpolate(double dt);
   };
 
   class RefVRP {
   public:
     double omega = 1.0;
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector3> > vrp; // 必ずサイズは1以上
-  public:
-    bool interpolate(double dt);
   };
 
   class Refq {
   public:
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::VectorX> > q; // 必ずサイズは1以上
-  public:
-    Refq();
-    bool interpolate(double dt);
   };
 
   class RefContact {
@@ -74,15 +67,15 @@ namespace actkin_stabilizer {
     // RTC起動時に一回呼ばれる.
     void init(const State& state);
 
+    // startStabilizer時に呼ばれる
+    void onStartStabilizer();
+
     // MODE_ST中のみ呼ばれる
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefStateIdl& m_refState);
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefEESequence& m_refEEPose);
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefVRPIdl& m_refVRP);
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefqIdl& m_refq);
     void updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefContactSequence& m_refContact);
-
-    // startStabilizer時に呼ばれる
-    void onStartStabilizer(const State& state, const actkin_stabilizer_msgs::RefStateIdl& m_refState);
 
     // MODE_ST中のみ呼ばれる. 各goalをdtだけ補間する.
     void interpolate(double dt);
