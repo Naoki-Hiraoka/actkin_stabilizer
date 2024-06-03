@@ -29,6 +29,7 @@ ActKinStabilizer::Ports::Ports() :
   m_actBasePoseIn_("actBasePoseIn", m_actBasePose_),
   m_actBaseVelIn_("actBaseVelIn", m_actBaseVel_),
   m_actContactStateIn_("actContactStateIn", m_actContactState_),
+  m_refStateIn_("refState", m_refState_),
   m_selfCollisionIn_("selfCollisionIn", m_selfCollision_),
 
   m_tauOut_("tauOut", m_tau_),
@@ -199,13 +200,14 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   }
   double dt = 1.0 / rate;
 
-  // 外部からのサービスコールに寄るモード変更を反映する
+  // 外部からのサービスコールによって指令されたモード変更を反映する
   this->mode_.update();
 
   // startST直後の一回のみ実行
   if(this->mode_.isSyncToSTInit()){
     this->state_.onStartStabilizer();
     this->goal_.onStartStabilizer(); // 古いgoalを削除
+    this->resolvedAccelerationController_.onStartStabilizer();
   }
 
   if(this->mode_.isSTRunning()){
@@ -217,8 +219,7 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
                                             this->goal_);
 
     // goalを満たすようにtauを求めてstate->robot->joint->uに入れる
-    this->resolvedAccelerationController_.execResolvedAccelerationController(this->state_, this->goal_, instance_name, dt,
-                                                                             this->state_.robot);
+    this->resolvedAccelerationController_.execResolvedAccelerationController(this->state_, this->goal_, instance_name, dt);
   }
 
   ActKinStabilizer::writeOutPortData(this->state_, this->mode_,

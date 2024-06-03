@@ -118,7 +118,7 @@ protected:
 
   actkin_stabilizer::State state_;
   actkin_stabilizer::Goal goal_;
-  ResolvedAccelerationController resolvedAccelerationController_;
+  actkin_stabilizer::ResolvedAccelerationController resolvedAccelerationController_;
 
 protected:
   // utility functions

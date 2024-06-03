@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   prioritized_acc_inverse_kinematics_solver
   eigen_rtm_conversions
   rtm_data_tools
+  contact_state_msgs
   )
 find_package(choreonoid REQUIRED)
 
@@ -39,7 +40,6 @@ add_library(ActKinStabilizer SHARED
   ActKinStabilizer.cpp
   ActKinStabilizerService_impl.cpp
   ResolvedAccelerationController.cpp
-  WrenchDistributor.cpp
   MathUtil.cpp
   State.cpp
   Goal.cpp
