@@ -51,6 +51,74 @@ namespace actkin_stabilizer {
     bool execResolvedAccelerationController(const State& state, const Goal& goal, const std::string& instance_name, double dt) const;
 
   protected:
+    bool calcContactState(const State& state,
+                          const Goal& goal,
+                          const std::string& instance_name,
+                          std::vector<std::shared_ptr<RefContact> >& allNextContacts) const;
+
+    bool calcVariables(const State& state,
+                       const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
+                       const std::string& instance_name,
+                       std::vector<cnoid::LinkPtr>& joints,
+                       std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
+                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints) const;
+
+    bool calcEOMConstraints(const State& state,
+                            const std::string& instance_name,
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints) const;
+
+    bool calcPenetrationConstraints(const State& state,
+                                    const std::string& instance_name,
+                                    std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints) const;
+
+    bool calcKeepContactConstraints(const State& state,
+                                    const std::vector<std::shared_ptr<RefContact> >& allNextContacts,
+                                    const std::string& instance_name,
+                                    std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints) const;
+
+    bool calcCollisionAvoidanceConstraints(const State& state,
+                                           const std::string& instance_name,
+                                           std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints) const;
+
+    bool calcCOMContactConstraints(const State& state,
+                                   const Goal& goals,
+                                   const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
+                                   const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                   const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
+                                   const std::string& instance_name,
+                                   std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const;
+
+    bool calcEEFConstraints(const State& state,
+                            const Goal& goals,
+                            const std::string& instance_name,
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints) const;
+
+    bool calcJointConstraints(const State& state,
+                              const Goal& goals,
+                              const std::string& instance_name,
+                              std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
+                              std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints) const;
+
+    bool calcRAC(const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints,
+                 const std::string& instance_name,
+                 const std::vector<cnoid::LinkPtr>& joints,
+                 const std::vector<std::shared_ptr<aik_constraint::Force> >& forces) const;
+
+    bool calcTorque(const State& state,
+                    const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
+                    const std::string& instance_name) const;
+
     // bool calcCogAcc(const State& gaitParam, double dt, bool useActState,
     //                 State::DebugData& debugData, //for Log
     //                 cnoid::Vector3& o_tgtCogAcc/*generate座標系*/, cnoid::Vector3& o_genNextCog, cnoid::Vector3& o_genNextCogVel, cnoid::Vector3& o_genNextCogAcc, cnoid::Vector3& o_genNextForce) const;

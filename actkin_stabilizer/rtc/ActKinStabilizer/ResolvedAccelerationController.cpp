@@ -6,7 +6,7 @@
 
 namespace actkin_stabilizer {
   void ResolvedAccelerationController::init(State& state){
-          // aikdqWeight.resize(gaitParam.robot->body->numJoints(), cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::HOFFARBIB));
+    // aikdqWeight.resize(gaitParam.robot->body->numJoints(), cpp_filters::TwoPointInterpolator<double>(1.0, 0.0, 0.0, cpp_filters::HOFFARBIB));
 
       // aikEEPositionConstraint.clear();
       // aikRefJointAngleConstraint.clear();
@@ -22,55 +22,208 @@ namespace actkin_stabilizer {
     return;
   }
 
-  bool ResolvedAccelerationController::execResolvedAccelerationController(const State& state, const Goal& goal, const std::string& instance_name, double dt) const{
 
-    // - 現在のactual重心位置から、目標重心加速を計算
-    // - 目標重心加速を満たすように全身の加速度を計算
-    // - 全身の加速度と重力に釣り合うように目標足裏反力を計算. 関節トルクも求まる
+  /*
+    FootGuided Controlから、次の周期の目標の重心の加速と、角運動量の変化(0)が出てくる. これを全身の加速度に分解するときのタスク優先度について、以下の循環優先度関係がある. この矛盾は、恐らく全身モデル予測制御を使わない限り無くならない.
+    * 重心の目標加速(特にXY) > 腕などのエンドエフェクタの目標位置
+       これは自明. 特に動歩行
+    * 腕などのエンドエフェクタの目標位置 > 角運動量の目標変化
+       角運動量の変化を厳密に守ると、まともにエンドエフェクタが動かない
+    * 角運動量の目標変化 > 重心の目標加速
+       重心位置はFootGuidedControlやFootStepModificationで制御できるが、角運動量は制御する手段が乏しく、発散しやすいため
 
-    /*
-      FootGuided Controlから、次の周期の目標の重心の加速と、角運動量の変化(0)が出てくる. これを全身の加速度に分解するときのタスク優先度について、以下の循環優先度関係がある. この矛盾は、恐らく全身モデル予測制御を使わない限り無くならない.
-      * 重心の目標加速(特にXY) > 腕などのエンドエフェクタの目標位置
-      これは自明. 特に動歩行
-      * 腕などのエンドエフェクタの目標位置 > 角運動量の目標変化
-      角運動量の変化を厳密に守ると、まともにエンドエフェクタが動かない
-      * 角運動量の目標変化 > 重心の目標加速
-      重心位置はFootGuidedControlやFootStepModificationで制御できるが、角運動量は制御する手段が乏しく、発散しやすいため
-      今は、次のような方法によって、とりあえず循環を回避している
-      - FootGuidedControlで、支持領域リミットによって 角運動量の変化(=0) > FootGuidedControlの結果の重心の加速 の優先度でリミット.
-      - acceleration based ik で、FootGuidedControlの結果の重心の目標加速(特にXY) > 腕などのエンドエフェクタの目標位置 > FootGuidedControlの結果の角運動量の目標変化(=0) の優先度で解く
-      - wrench distributionで、acceleration based ikの結果の角運動量の変化 > acceleration based ikの結果の重心の加速 の優先度で解く.
+    それっぽく循環を回避する方法
+      - FootGuidedControlから出力された目標の重心加速を、支持領域リミットによって (3) 角運動量の変化(=0) > (1) FootGuidedControlの結果の重心の加速 の優先度でリミット.
+      - 力と加速度を同時に探索するacceleration based ik で、(1) FootGuidedControlの結果の重心の目標加速(特にXY) > (2) 腕などのエンドエフェクタの目標位置 > (3) 角運動量の目標変化(->0) の優先度で解く.
     */
 
-    // masterのhrpsysではSwingEEModification(位置制御)を行っていたが、地面についているときに、time_constでもとの位置に戻るまでの間、足と重心の相対位置が着地位置タイミング修正計算で用いるものとずれることによる着地位置修正パフォーマンスの低下のデメリットの方が大きいので、削除した
-    // masterのhrpsysやもとのauto_stabilizerでは位置制御+DampingControlをサポートしていたが、位置制御+DampingControlは実機での目標接触力への追従に遅れがある. FootGuidedControlでは、目標ZMPの位相を進めたり、ZMPの追従遅れを考慮した目標ZMP計算を行ったりをしていないので、遅れに弱い. そのため、位置制御+DampingControlは削除し、所謂TorqueControlのみをサポートしている.
+  /*
+    前提:
+      force->Fには前回の周期の値が入っていたり、0が入っていたりする.
+      全bodyは、ddq=0、F_ext=0の状態でForwardKinematics(true,true) -> calcCenterOfMass() -> calcInverseDynamics()済み. calcInverseDynamics()の結果のrootLinkが受ける力(rootLinkまわり)がrootLink()->F_ext()に入っている.
+   */
 
+  bool ResolvedAccelerationController::execResolvedAccelerationController(const State& state, const Goal& goal, const std::string& instance_name, double dt) const{
 
-    // useActState==true: genCogから目標重心Accを計算し、genCogを進める. actCogから目標重心Accを計算する.
-    // useActState==false: genCogから目標重心Accを計算し、genCogを進める.
-    // cnoid::Vector3 tgtActCogAcc; // generate frame
-    // cnoid::Vector3 genNextCog,genNextCogVel,genNextCogAcc,genNextForce;
-    // this->calcCogAcc(gaitParam, dt, useActState, // input
-    //                  debugData, // debug
-    //                  tgtActCogAcc,genNextCog,genNextCogVel,genNextCogAcc,genNextForce); // output
+    // 次時刻の接触状態を決定する.
+    std::vector<std::shared_ptr<RefContact> > allNextContacts;
+    this->calcContactState(state, goal, instance_name,
+                           allNextContacts);
 
-    // actRobotTqcのq,dqにactualの値を入れ、
-    // useActState==true: actRobotTqcのddqに今回の目標値を求めて入れる. genRobotのqはactRobotの値に緩やかに従う
-    // useActState==false: actRobotTqcのddqはゼロ. genRobotのqはフィードフォワードにIKを解く.
-    // this->calcResolvedAccelerationControl(gaitParam, dt, tgtActCogAcc, genNextCog, useActState,
-    //                                       actRobotTqc, genRobot);
+    // TODO
+    // contactによってworldを介さずにrobotとつながっているcontactsとobjectsを抽出する. これらのみを以降で考慮する.
+    std::vector<std::shared_ptr<RefContact> > activeNextContacts = allNextContacts; // contactによってworldを介さずにrobotとつながっているcontacts.
+    //std::vector<std::shared_ptr<cnoid::BodyPtr> > activeObjects; // contactによってworldを介さずにrobotとつながっているobjects.
+    //this->calcActiveContacts(state, allContacts, instance_name,
+    //                         activeNextContacts);
 
-    // useActState==true: actRobotTqcの自重と加速に要する力と、manipulation arm/legのrefForceに釣り合うように、目標支持脚反力を計算. actRobotTqcのuを求める.
-    // useActState==false: genRobotの自重と加速に要する力と、manipulation arm/legのrefForceに釣り合うように、目標支持脚反力を計算. actRobotTqcのuは0.
-    // this->calcWrench(gaitParam, genNextForce, useActState,// input
-    //                  debugData.stEETargetWrench, actRobotTqc); // output
+    // 分解加速度制御のタスクを生成していく.
+    // タスク
+    //   1. 関節角度上下限. 接触力制約. 力の釣り合い
+    //   3. 接触部位を動かさない & 接触部位がめり込まない
+    //   4. 干渉回避
+    //   5. robot重心とhigh priority EEFの目標加速度
+    //   6. normal priority EEFの目標加速度
+    //   7. robot関節角度、robot角運動量
 
-    // o_genNextCog = genNextCog;
-    // o_genNextCogVel = genNextCogVel;
-    // o_genNextCogAcc = genNextCogAcc;
+    // 探索変数
+    std::vector<cnoid::LinkPtr> joints;
+    std::vector<std::shared_ptr<aik_constraint::Force> > forces;
+    // 関節角度上下限制約
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > jointAngleLimitConstraints;
+    // 接触力制約
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > forceConstraints;
+    this->calcVariables(state, activeNextContacts, instance_name,
+                        joints, forces, jointAngleLimitConstraints, forceConstraints);
+
+    // 力の釣り合い制約
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eomConstraints;
+    this->calcEOMConstraints(state, instance_name,
+                             eomConstraints);
+
+    // 接触部位がめりこまない制約
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > penetrationConstraints;
+    this->calcPenetrationConstraints(state, instance_name,
+                                     penetrationConstraints);
+
+    // 接触部位を動かさない制約
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > keepContactConstraints;
+    this->calcKeepContactConstraints(state, allNextContacts, instance_name,
+                                     keepContactConstraints);
+
+    // 干渉回避
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > collisionAvoidanceConstraints;
+    this->calcCollisionAvoidanceConstraints(state, instance_name,
+                                            collisionAvoidanceConstraints);
+
+    // 重心の目標加速度.
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > comConstraints;
+    this->calcCOMContactConstraints(state, goal, forces, forceConstraints, eomConstraints, instance_name,
+                                    comConstraints);
+
+    // EEFの目標加速度
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefHighConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefLowConstraints;
+    this->calcEEFConstraints(state, goal, instance_name,
+                             eefHighConstraints, eefLowConstraints);
+
+    // robot関節角度、robot角運動量
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > jointAngleConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > angularMomentumConstraints;
+    this->calcJointConstraints(state, goal, instance_name,
+                               jointAngleConstraints, angularMomentumConstraints);
+
+    // QPを解いて、ddqとFに入れる.
+    this->calcRAC(jointAngleLimitConstraints,
+                  forceConstraints,
+                  eomConstraints,
+                  penetrationConstraints,
+                  keepContactConstraints,
+                  comConstraints,
+                  eefHighConstraints,
+                  eefLowConstraints,
+                  jointAngleConstraints,
+                  angularMomentumConstraints,
+                  instance_name,
+                  joints,
+                  forces);
+
+    // ddqとFからトルクを求めuに入れる.uの値を上下限でリミット
+    this->calcTorque(state, activeNextContacts, instance_name);
 
     return true;
   }
+
+  bool ResolvedAccelerationController::calcContactState(const State& state,
+                                                        const Goal& goal,
+                                                        const std::string& instance_name,
+                                                        std::vector<std::shared_ptr<RefContact> >& allNextContacts) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcVariables(const State& state,
+                                                     const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
+                                                     const std::string& instance_name,
+                                                     std::vector<cnoid::LinkPtr>& joints,
+                                                     std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
+                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcEOMConstraints(const State& state,
+                                                          const std::string& instance_name,
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcPenetrationConstraints(const State& state,
+                                                                  const std::string& instance_name,
+                                                                  std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcKeepContactConstraints(const State& state,
+                                                                  const std::vector<std::shared_ptr<RefContact> >& allNextContacts,
+                                                                  const std::string& instance_name,
+                                                                  std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcCollisionAvoidanceConstraints(const State& state,
+                                                                         const std::string& instance_name,
+                                                                         std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcCOMContactConstraints(const State& state,
+                                                                 const Goal& goals,
+                                                                 const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
+                                                                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                                                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
+                                                                 const std::string& instance_name,
+                                                                 std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcEEFConstraints(const State& state,
+                                                          const Goal& goals,
+                                                          const std::string& instance_name,
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcJointConstraints(const State& state,
+                                                            const Goal& goals,
+                                                            const std::string& instance_name,
+                                                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
+                                                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcRAC(const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints,
+                                               const std::string& instance_name,
+                                               const std::vector<cnoid::LinkPtr>& joints,
+                                               const std::vector<std::shared_ptr<aik_constraint::Force> >& forces) const{
+    return true;
+  }
+
+  bool ResolvedAccelerationController::calcTorque(const State& state,
+                                                  const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
+                                                  const std::string& instance_name) const{
+    return true;
+  }
+
 
   // bool Stabilizer::calcCogAcc(const State& gaitParam, double dt, bool useActState,
   //                             State::DebugData& debugData, //for Log
