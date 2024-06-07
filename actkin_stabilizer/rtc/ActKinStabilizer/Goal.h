@@ -48,12 +48,15 @@ namespace actkin_stabilizer {
     cnoid::LinkPtr link1;
     cnoid::Isometry3 localPose1 = cnoid::Isometry3::Identity();
     cnoid::LinkPtr link2;
-    std::vector<bool> freeAxis = std::vector<bool>(6,true); // localPose1 local
+    std::vector<bool> freeAxis = std::vector<bool>(6,false); // localPose1 local
     Region3D region; // localPose1 local
 
     Eigen::SparseMatrix<double,Eigen::RowMajor> wrenchC; // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約.
     cnoid::VectorX wrenchld;
     cnoid::VectorX wrenchud;
+
+    std::shared_ptr<aik_constraint::Force> force = nullptr;
+    std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
   };
 
   class Goal {

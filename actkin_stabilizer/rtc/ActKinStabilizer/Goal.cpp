@@ -339,6 +339,24 @@ namespace actkin_stabilizer{
         continue;
       }
 
+      if(!contactGoal->force ||
+         contactGoal->force->A_link() != contactGoal->link1 ||
+         contactGoal->force->B_link() != contactGoal->link2) {
+        contactGoal->force = std::make_shared<aik_constraint::Force>();
+        aik_constraint::Force::setFACE(contactGoal->force);
+      }
+      contactGoal->force->A_link() = contactGoal->link1;
+      contactGoal->force->A_localpos() = contactGoal->localPose1;
+      contactGoal->force->B_link() = contactGoal->link2;
+
+      if(!contactGoal->forceConstraint){
+        contactGoal->forceConstraint = std::make_shared<aik_constraint::ForceConstraint>();
+      }
+      contactGoal->forceConstraint->force() = contactGoal->force;
+      contactGoal->forceConstraint->dl() = contactGoal->wrenchld;
+      contactGoal->forceConstraint->du() = contactGoal->wrenchud;
+      contactGoal->forceConstraint->C() = contactGoal->wrenchC;
+
       nextContactGoals[name] = contactGoal;
     }
 

@@ -134,10 +134,32 @@ namespace actkin_stabilizer {
     return true;
   }
 
+  // goal.contactGoalsの中で、region内に実際のcontactが存在するもののみを抽出.
   bool ResolvedAccelerationController::calcContactState(const State& state,
                                                         const Goal& goal,
                                                         const std::string& instance_name,
                                                         std::vector<std::shared_ptr<RefContact> >& allNextContacts) const{
+    allNextContacts.clear();
+
+    for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++){
+      const cnoid::VectorX& ld = it->second->region.ld;
+      const cnoid::VectorX& ud = it->second->region.ud;
+      const Eigen::MatrixXd& C = it->second->region.C;
+      const cnoid::Isometry3 poseInv = (it->second->link1 ? it->second->link1->T() * it->second->localPose1 : it->second->localPose1).inverse();
+
+      for(int i=0;i<state.contacts.size();i++){
+        if( ((state.contacts[i]->link1 == it->second->link1) && (state.contacts[i]->link2 == it->second->link2)) ||
+            ((state.contacts[i]->link1 == it->second->link2) && (state.contacts[i]->link2 == it->second->link1)) ) {
+          cnoid::Vector3 value = C * (poseInv * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation()));
+          if( ((value - ld).array() >= 0.0).all() &&
+              ((ud - value).array() >= 0.0).all() ){
+            allNextContacts.push_back(it->second);
+            break;
+          }
+        }
+      }
+    }
+
     return true;
   }
 
@@ -148,6 +170,8 @@ namespace actkin_stabilizer {
                                                      std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
                                                      std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
                                                      std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints) const{
+    
+
     return true;
   }
 
