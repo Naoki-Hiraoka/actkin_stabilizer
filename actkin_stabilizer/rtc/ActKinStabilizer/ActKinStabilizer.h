@@ -68,7 +68,7 @@ protected:
 
     actkin_stabilizer_msgs::RefStateIdl m_refState_;
     RTC::InPort<actkin_stabilizer_msgs::RefStateIdl> m_refStateIn_;
-    bool m_refStatereUpdatedByService_ = false;
+    bool m_refStateUpdatedByService_ = false;
 
     collision_checker_msgs::TimedCollisionSeq m_selfCollision_; // generate frame. genRobotの自己干渉の最近傍点
     RTC::InPort<collision_checker_msgs::TimedCollisionSeq> m_selfCollisionIn_;
