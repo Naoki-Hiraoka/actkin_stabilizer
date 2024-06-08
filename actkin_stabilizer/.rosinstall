@@ -40,4 +40,8 @@
     uri: https://github.com/Naoki-Hiraoka/eigen_rtm_conversions
     local-name: eigen_rtm_conversions
     version: 1.0
+- git:
+    uri: https://github.com/Naoki-Hiraoka/cpp_controllers
+    local-name: cpp_controllers
+    version: 1.0
 

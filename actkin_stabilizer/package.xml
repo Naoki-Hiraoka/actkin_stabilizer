@@ -14,6 +14,7 @@
 
   <depend>rtmbuild2</depend>
   <depend>cpp_filters</depend>
+  <depend>cpp_controllers</depend>
   <depend>choreonoid</depend>
   <depend>prioritized_qp_osqp</depend>
   <depend>joint_limit_table</depend>

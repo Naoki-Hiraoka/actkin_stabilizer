@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   prioritized_qp_osqp
   prioritized_inverse_kinematics_solver2
   cpp_filters
+  cpp_controllers
   ik_constraint2_joint_limit_table
   joint_limit_table
   collision_checker_msgs

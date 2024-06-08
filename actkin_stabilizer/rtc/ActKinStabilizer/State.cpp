@@ -6,7 +6,7 @@
 #include <cnoid/Jacobian>
 
 namespace actkin_stabilizer {
-  void State::init(const cnoid::BodyPtr& robot_){
+  void State::init(const cnoid::BodyPtr& robot_, const std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > >& jointLimitTables_){
 
     this->robot = robot_;
     for(int i=0;i<this->robot->numJoints();i++){
@@ -18,7 +18,30 @@ namespace actkin_stabilizer {
     }
     this->softMaxTorque.resize(this->robot->numJoints(),std::numeric_limits<double>::max());
     this->jointControllable.resize(this->robot->numJoints(),true);
-    this->jointLimitTables.resize(this->robot->numJoints());
+
+    if(jointLimitTables_.size() != this->robot->numJoints()) {
+      std::cerr << "\x1b[31m[" << __FUNCTION__ << "jointLimitTables_.size() != this->robot->numJoints()" << "\x1b[39m" << std::endl;
+      this->jointLimitTables.resize(this->robot->numJoints());
+    }else{
+      this->jointLimitTables = jointLimitTables_;
+    }
+
+    // constraints
+    this->jointLimitConstraints.resize(this->robot->numJoints());
+    for(int i=0;i<this->robot->numJoints();i++){
+      std::shared_ptr<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint> constraint = std::make_shared<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint>();
+      constraint->joint() = this->robot->joint(i);
+      constraint->jointLimitTables() = this->jointLimitTables[i];
+      constraint->pgain() = 400;
+      constraint->dgain() = 100;
+      constraint->maxAcc() = 15.0;
+      constraint->maxAccByPosError() = 5.0;
+      constraint->maxAccByVelError() = 20.0;
+      constraint->weight() = 0.1;
+      this->jointLimitConstraints[i] = constraint;
+    }
+    this->eomConstraint = std::make_shared<aik_constraint::EOMConstraint>();
+    this->eomConstraint->robot() = robot;
 
     this->linkNameMap[std::string("")] = nullptr; //world
     for(int l=0;l<this->robot->numLinks() ; l++){

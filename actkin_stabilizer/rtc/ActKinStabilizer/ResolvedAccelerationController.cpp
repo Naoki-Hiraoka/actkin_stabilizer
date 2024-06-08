@@ -3,6 +3,7 @@
 #include <cnoid/Jacobian>
 #include <cnoid/EigenUtil>
 #include <cnoid/src/Body/InverseDynamics.h>
+#include <cpp_controllers/cpp_controllers.h>
 
 namespace actkin_stabilizer {
   void ResolvedAccelerationController::init(State& state){
@@ -47,8 +48,9 @@ namespace actkin_stabilizer {
 
     // 次時刻の接触状態を決定する.
     std::vector<std::shared_ptr<RefContact> > allNextContacts;
+    std::vector<std::shared_ptr<Contact> > redundantContacts;
     this->calcContactState(state, goal, instance_name,
-                           allNextContacts);
+                           allNextContacts, redundantContacts);
 
     // TODO
     // contactによってworldを介さずにrobotとつながっているcontactsとobjectsを抽出する. これらのみを以降で考慮する.
@@ -70,11 +72,11 @@ namespace actkin_stabilizer {
     std::vector<cnoid::LinkPtr> joints;
     std::vector<std::shared_ptr<aik_constraint::Force> > forces;
     // 関節角度上下限制約
-    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > jointAngleLimitConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > jointLimitConstraints;
     // 接触力制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > forceConstraints;
     this->calcVariables(state, activeNextContacts, instance_name,
-                        joints, forces, jointAngleLimitConstraints, forceConstraints);
+                        joints, forces, jointLimitConstraints, forceConstraints);
 
     // 力の釣り合い制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eomConstraints;
@@ -83,7 +85,7 @@ namespace actkin_stabilizer {
 
     // 接触部位がめりこまない制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > penetrationConstraints;
-    this->calcPenetrationConstraints(state, instance_name,
+    this->calcPenetrationConstraints(state, redundantContacts, instance_name,
                                      penetrationConstraints);
 
     // 接触部位を動かさない制約
@@ -98,8 +100,8 @@ namespace actkin_stabilizer {
 
     // 重心の目標加速度.
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > comConstraints;
-    this->calcCOMContactConstraints(state, goal, forces, forceConstraints, eomConstraints, instance_name,
-                                    comConstraints);
+    this->calcCOMConstraints(state, goal, forces, forceConstraints, eomConstraints, instance_name,
+                             comConstraints);
 
     // EEFの目標加速度
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefHighConstraints;
@@ -114,22 +116,29 @@ namespace actkin_stabilizer {
                                jointAngleConstraints, angularMomentumConstraints);
 
     // QPを解いて、ddqとFに入れる.
-    this->calcRAC(jointAngleLimitConstraints,
-                  forceConstraints,
-                  eomConstraints,
-                  penetrationConstraints,
-                  keepContactConstraints,
-                  comConstraints,
-                  eefHighConstraints,
-                  eefLowConstraints,
-                  jointAngleConstraints,
-                  angularMomentumConstraints,
-                  instance_name,
-                  joints,
-                  forces);
+    bool solved = this->calcRAC(jointLimitConstraints,
+                                forceConstraints,
+                                eomConstraints,
+                                penetrationConstraints,
+                                keepContactConstraints,
+                                collisionAvoidanceConstraints,
+                                comConstraints,
+                                eefHighConstraints,
+                                eefLowConstraints,
+                                jointAngleConstraints,
+                                angularMomentumConstraints,
+                                instance_name,
+                                joints,
+                                forces);
 
-    // ddqとFからトルクを求めuに入れる.uの値を上下限でリミット
-    this->calcTorque(state, activeNextContacts, instance_name);
+    if(solved){
+      // ddqとFからトルクを求めuに入れる.uの値を上下限でリミット
+      this->calcTorque(state, activeNextContacts, instance_name);
+    }else{
+      for(int i=0;i<state.robot->numJoints();i++){
+        state.robot->joint(i)->u() = 0.0;
+      }
+    }
 
     return true;
   }
@@ -138,25 +147,41 @@ namespace actkin_stabilizer {
   bool ResolvedAccelerationController::calcContactState(const State& state,
                                                         const Goal& goal,
                                                         const std::string& instance_name,
-                                                        std::vector<std::shared_ptr<RefContact> >& allNextContacts) const{
+                                                        std::vector<std::shared_ptr<RefContact> >& allNextContacts,
+                                                        std::vector<std::shared_ptr<Contact> >& redundantContacts) const{
     allNextContacts.clear();
+    redundantContacts.clear();
 
+    std::vector<bool> use(goal.contactGoals.size(),false);
+    std::vector<cnoid::Isometry3> poseInv;
     for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++){
-      const cnoid::VectorX& ld = it->second->region.ld;
-      const cnoid::VectorX& ud = it->second->region.ud;
-      const Eigen::MatrixXd& C = it->second->region.C;
-      const cnoid::Isometry3 poseInv = (it->second->link1 ? it->second->link1->T() * it->second->localPose1 : it->second->localPose1).inverse();
+      poseInv.push_back((it->second->link1 ? it->second->link1->T() * it->second->localPose1 : it->second->localPose1).inverse());
+    }
 
-      for(int i=0;i<state.contacts.size();i++){
+    for(int i=0;i<state.contacts.size();i++){
+      int j = 0;
+      bool redundant = true;
+      for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++, j++){
         if( ((state.contacts[i]->link1 == it->second->link1) && (state.contacts[i]->link2 == it->second->link2)) ||
             ((state.contacts[i]->link1 == it->second->link2) && (state.contacts[i]->link2 == it->second->link1)) ) {
-          cnoid::Vector3 value = C * (poseInv * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation()));
-          if( ((value - ld).array() >= 0.0).all() &&
-              ((ud - value).array() >= 0.0).all() ){
-            allNextContacts.push_back(it->second);
+          cnoid::Vector3 value = it->second->region.C * (poseInv[j] * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation()));
+          if( ((value - it->second->region.ld).array() >= 0.0).all() &&
+              ((it->second->region.ud - value).array() >= 0.0).all() ){
+            use[j] = true;
+            redundant = false;
             break;
           }
         }
+      }
+      if(redundant){
+        redundantContacts.push_back(state.contacts[i]);
+      }
+    }
+
+    {
+      int j = 0;
+      for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++, j++){
+        if(use[j]) allNextContacts.push_back(it->second);
       }
     }
 
@@ -168,9 +193,27 @@ namespace actkin_stabilizer {
                                                      const std::string& instance_name,
                                                      std::vector<cnoid::LinkPtr>& joints,
                                                      std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
-                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointLimitConstraints,
                                                      std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints) const{
-    
+    joints.clear();
+    jointLimitConstraints.clear();
+
+    joints.push_back(state.robot->rootLink());
+    for(int i=0;i<state.robot->numJoints(); i++){
+      if(state.jointControllable[i]){
+        joints.push_back(state.robot->joint(i));
+        jointLimitConstraints.push_back(state.jointLimitConstraints[i]);
+      }
+    }
+
+    forces.clear();
+    forceConstraints.clear();
+    for(int i = 0; i < activeNextContacts.size(); i++){
+      forces.push_back(activeNextContacts[i]->force);
+      forceConstraints.push_back(activeNextContacts[i]->forceConstraint);
+    }
+
+    // TODO ref force
 
     return true;
   }
@@ -178,12 +221,17 @@ namespace actkin_stabilizer {
   bool ResolvedAccelerationController::calcEOMConstraints(const State& state,
                                                           const std::string& instance_name,
                                                           std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints) const{
+    eomConstraints.clear();
+    eomConstraints.push_back(state.eomConstraint);
     return true;
   }
 
   bool ResolvedAccelerationController::calcPenetrationConstraints(const State& state,
+                                                                  const std::vector<std::shared_ptr<Contact> >& redundantContacts,
                                                                   const std::string& instance_name,
                                                                   std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints) const{
+    penetrationConstraints.clear();
+    // TODO
     return true;
   }
 
@@ -191,38 +239,114 @@ namespace actkin_stabilizer {
                                                                   const std::vector<std::shared_ptr<RefContact> >& allNextContacts,
                                                                   const std::string& instance_name,
                                                                   std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints) const{
+    keepContactConstraints.clear();
+    for(int i=0;i<allNextContacts.size();i++){
+      keepContactConstraints.push_back(allNextContacts[i]->positionConstraint);
+    }
     return true;
   }
 
   bool ResolvedAccelerationController::calcCollisionAvoidanceConstraints(const State& state,
                                                                          const std::string& instance_name,
                                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints) const{
+    collisionAvoidanceConstraints.clear();
+    // TODO
     return true;
   }
 
-  bool ResolvedAccelerationController::calcCOMContactConstraints(const State& state,
-                                                                 const Goal& goals,
-                                                                 const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
-                                                                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
-                                                                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
-                                                                 const std::string& instance_name,
-                                                                 std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const{
+  bool ResolvedAccelerationController::calcCOMConstraints(const State& state,
+                                                          const Goal& goal,
+                                                          const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
+                                                          const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                                          const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
+                                                          const std::string& instance_name,
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const{
+    comConstraints.clear();
+    if(goal.vrpGoals.size()==0) return true;
+
+    std::vector<cpp_controllers::LinearTrajectory<cnoid::Vector3> > traj;
+    double sum_t = 0.0;
+    for(int i=0;i<goal.vrpGoals[0]->vrp.size();i++){
+      traj.emplace_back(goal.vrpGoals[0]->vrp[i].value(),
+                        goal.vrpGoals[0]->vrp[i].getGoal(),
+                        goal.vrpGoals[0]->vrp[i].remain_time());
+      sum_t += goal.vrpGoals[0]->vrp[i].remain_time();
+    }
+    if(sum_t < goal.minHorizonTime){
+      traj.emplace_back(traj.back().getGoal(),
+                        traj.back().getGoal(),
+                        goal.minHorizonTime - sum_t);
+    }
+
+    cnoid::Vector3 cp = state.robot->centerOfMass() + state.cogVel.value() / goal.vrpGoals[0]->omega;
+    cnoid::Vector3 vrp = cpp_controllers::calcFootGuidedControl<cnoid::Vector3>(goal.vrpGoals[0]->omega,
+                                                                                cnoid::Vector3::Zero(),
+                                                                                cp,
+                                                                                traj);
+    cnoid::Vector3 acc = std::pow(goal.vrpGoals[0]->omega, 2) * (state.robot->centerOfMass() - vrp);
+
+    goal.vrpGoals[0]->comConstraint->ref_acc() = acc; // TODO limit
+    comConstraints.push_back(goal.vrpGoals[0]->comConstraint);
+
     return true;
   }
 
   bool ResolvedAccelerationController::calcEEFConstraints(const State& state,
-                                                          const Goal& goals,
+                                                          const Goal& goal,
                                                           const std::string& instance_name,
                                                           std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
                                                           std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints) const{
+
+    eefHighConstraints.clear();
+    eefLowConstraints.clear();
+
+    for(std::unordered_map<std::string, std::shared_ptr<RefEE> >::const_iterator it=goal.eeGoals.begin(); it != goal.eeGoals.end(); it++){
+      cnoid::Isometry3 p;
+      cnoid::Vector6 v;
+      cnoid::Vector6 a;
+      it->second->pose[0].value(p,v,a);
+      cnoid::Isometry3 frame = it->second->frameLink ? it->second->frameLink->T() * it->second->framePose : it->second->framePose;
+      it->second->positionConstraint->B_localpos() = frame * p;
+      it->second->positionConstraint->B_localvel().head<3>() = frame.linear() * v.head<3>();
+      it->second->positionConstraint->B_localvel().tail<3>() = frame.linear() * v.tail<3>();
+      it->second->positionConstraint->ref_acc().head<3>() = frame.linear() * a.head<3>();
+      it->second->positionConstraint->ref_acc().tail<3>() = frame.linear() * a.tail<3>();
+      it->second->positionConstraint->eval_localR() = it->second->positionConstraint->B_localpos().linear();
+
+      if(it->second->priority >= 1) {
+        eefHighConstraints.push_back(it->second->positionConstraint);
+      }else{
+        eefLowConstraints.push_back(it->second->positionConstraint);
+      }
+    }
     return true;
   }
 
   bool ResolvedAccelerationController::calcJointConstraints(const State& state,
-                                                            const Goal& goals,
+                                                            const Goal& goal,
                                                             const std::string& instance_name,
                                                             std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
                                                             std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints) const{
+    jointAngleConstraints.clear();
+    if(goal.qGoals.size() != 0) {
+      cnoid::VectorX q, dq, ddq;
+      goal.qGoals[0]->q[0].value(q,dq,ddq);
+
+      for(int i=0;i<state.robot->numJoints();i++){
+        if(state.jointControllable[i]){
+          goal.qGoals[0]->jointAngleConstraints[i]->targetq() = q[i];
+          goal.qGoals[0]->jointAngleConstraints[i]->targetdq() = dq[i];
+          goal.qGoals[0]->jointAngleConstraints[i]->ref_acc() = ddq[i];
+          jointAngleConstraints.push_back(goal.qGoals[0]->jointAngleConstraints[i]);
+        }
+      }
+    }
+
+    angularMomentumConstraints.clear();
+    if(goal.vrpGoals.size()!=0){
+      angularMomentumConstraints.push_back(goal.vrpGoals[0]->angularMomentumConstraint);
+    }
+
     return true;
   }
 
@@ -231,6 +355,7 @@ namespace actkin_stabilizer {
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints,
@@ -239,12 +364,86 @@ namespace actkin_stabilizer {
                                                const std::string& instance_name,
                                                const std::vector<cnoid::LinkPtr>& joints,
                                                const std::vector<std::shared_ptr<aik_constraint::Force> >& forces) const{
-    return true;
+
+    std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
+
+    {
+      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+      constraints_.insert(constraints_.end(), jointAngleLimitConstraints.begin(), jointAngleLimitConstraints.end());
+      constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
+      constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+      constraints.push_back(constraints_);
+    }
+    {
+      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+      constraints_.insert(constraints_.end(), keepContactConstraints.begin(), keepContactConstraints.end());
+      constraints_.insert(constraints_.end(), penetrationConstraints.begin(), penetrationConstraints.end());
+      constraints.push_back(constraints_);
+    }
+    {
+      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+      constraints_.insert(constraints_.end(), collisionAvoidanceConstraints.begin(), collisionAvoidanceConstraints.end());
+      constraints.push_back(constraints_);
+    }
+    {
+      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+      constraints_.insert(constraints_.end(), comConstraints.begin(), comConstraints.end());
+      constraints_.insert(constraints_.end(), eefHighConstraints.begin(), eefHighConstraints.end());
+      constraints.push_back(constraints_);
+    }
+    {
+      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+      constraints_.insert(constraints_.end(), eefLowConstraints.begin(), eefLowConstraints.end());
+      constraints.push_back(constraints_);
+    }
+    {
+      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+      constraints_.insert(constraints_.end(), jointAngleConstraints.begin(), jointAngleConstraints.end());
+      constraints_.insert(constraints_.end(), angularMomentumConstraints.begin(), angularMomentumConstraints.end());
+      constraints.push_back(constraints_);
+    }
+
+    prioritized_acc_inverse_kinematics_solver::IKParam param;
+    param.debugLevel = 0;
+    param.ddqWeight = 1e-6;
+    param.forceWeight = 1e-12;
+    bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
+                                                                      forces,
+                                                                      constraints,
+                                                                      this->prevTasks,
+                                                                      param);
+    if(!solved){
+      std::cerr << "[" << instance_name << "] !solved" << std::endl;
+    }
+    return solved;
   }
 
   bool ResolvedAccelerationController::calcTorque(const State& state,
                                                   const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
                                                   const std::string& instance_name) const{
+
+    cnoid::calcInverseDynamics(state.robot->rootLink());
+    for(int i=0;i<activeNextContacts.size();i++){
+      for(int l=0;l<2;l++){
+        cnoid::LinkPtr link;
+        if(l==0) link = activeNextContacts[i]->link1;
+        else link = activeNextContacts[i]->link1;
+        if(link == nullptr || link->body() != state.robot) continue;
+        cnoid::Isometry3 contactPose = (activeNextContacts[i]->link1 ? activeNextContacts[i]->link1->T() * activeNextContacts[i]->localPose1 : activeNextContacts[i]->localPose1);
+        cnoid::JointPath jointPath(state.robot->rootLink(), link);
+        cnoid::MatrixXd J = cnoid::MatrixXd::Zero(6,jointPath.numJoints()); // world frame. contact origin
+        cnoid::setJacobian<0x3f,0,0,true>(jointPath,link,(link->T().inverse()*contactPose).translation(), // input
+                                          J); // output
+        cnoid::Vector6 force = (l==0?+1.0:-1.0) * activeNextContacts[i]->force->S() * activeNextContacts[i]->force->F(); // linkが受ける力. contact frame. contact origin
+        cnoid::Vector6 forceW;  // linkが受ける力. world frame. contact origin
+        forceW.head<3>() = contactPose.linear() * force.head<3>();
+        forceW.tail<3>() = contactPose.linear() * force.tail<3>();
+        cnoid::VectorX tau = - J.transpose() * forceW;
+        for(int j=0;j<jointPath.numJoints();j++){
+          jointPath.joint(j)->u() += tau[j];
+        }
+      }
+    }
     return true;
   }
 

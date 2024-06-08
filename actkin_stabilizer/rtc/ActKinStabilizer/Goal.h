@@ -29,17 +29,24 @@ namespace actkin_stabilizer {
     int priority = 1; // 0 or 1. 0ならふつう. 1は重心と同じ
     std::vector<cpp_filters::TwoPointInterpolatorSE3> pose; // 必ずサイズは1以上
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector6> > wrench; // 必ずサイズは1以上
+
+    std::shared_ptr<aik_constraint::PositionConstraint> positionConstraint = nullptr;
   };
 
   class RefVRP {
   public:
     double omega = 1.0;
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector3> > vrp; // 必ずサイズは1以上
+
+    std::shared_ptr<aik_constraint::COMConstraint> comConstraint = nullptr;
+    std::shared_ptr<aik_constraint::AngularMomentumConstraint> angularMomentumConstraint = nullptr;
   };
 
   class Refq {
   public:
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::VectorX> > q; // 必ずサイズは1以上
+
+    std::vector<std::shared_ptr<aik_constraint::JointAngleConstraint> > jointAngleConstraints;
   };
 
   class RefContact {
@@ -57,14 +64,26 @@ namespace actkin_stabilizer {
 
     std::shared_ptr<aik_constraint::Force> force = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
+    std::shared_ptr<aik_constraint::PositionConstraint> positionConstraint = nullptr;
   };
 
   class Goal {
   public:
+    // from port
     std::unordered_map<std::string, std::shared_ptr<RefEE> > eeGoals;
     std::vector<std::shared_ptr<RefVRP> > vrpGoals;
     std::vector<std::shared_ptr<Refq> > qGoals;
     std::unordered_map<std::string, std::shared_ptr<RefContact> > contactGoals;
+
+  public:
+    // parameter
+    double minHorizonTime = 0.6;
+    double Kp = 200.0;
+    double Dp = 30.0;
+    double Kr = 100.0;
+    double Dr = 20.0;
+    double Kq = 1.0;
+    double Dq = 1.;
 
   public:
     // RTC起動時に一回呼ばれる.

@@ -76,47 +76,54 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
 
   {
     // load robot model
-    cnoid::BodyLoader bodyLoader;
-    std::string fileName; this->getProperty("model", fileName);
-    if (fileName.find("file://") == 0) fileName.erase(0, strlen("file://"));
-    cnoid::BodyPtr robot = bodyLoader.load(fileName);
-    if(!robot){
-      std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << "failed to load model[" << fileName << "]" << "\x1b[39m" << std::endl;
-      return RTC::RTC_ERROR;
+    cnoid::BodyPtr robot;
+    {
+      cnoid::BodyLoader bodyLoader;
+      std::string fileName; this->getProperty("model", fileName);
+      if (fileName.find("file://") == 0) fileName.erase(0, strlen("file://"));
+      robot = bodyLoader.load(fileName);
+      if(!robot){
+        std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << "failed to load model[" << fileName << "]" << "\x1b[39m" << std::endl;
+        return RTC::RTC_ERROR;
+      }
+      if(!robot->rootLink()->isFreeJoint()){
+        std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << "rootLink is not FreeJoint [" << fileName << "]" << "\x1b[39m" << std::endl;
+        return RTC::RTC_ERROR;
+      }
+
+      // apply margin to jointlimit
+      for(int i=0;i<robot->numJoints();i++){
+        cnoid::LinkPtr joint = robot->joint(i);
+        if(joint->q_upper() - joint->q_lower() > 0.002){
+          joint->setJointRange(joint->q_lower()+0.001,joint->q_upper()-0.001);
+        }
+        // JointVelocityについて. 1.0だと安全.4.0は脚.10.0はlapid manipulation らしい. limitを小さくしすぎた状態で、速い指令を送ると、狭いlimitの中で高優先度タスクを頑張って満たそうとすることで、低優先度タスクを満たす余裕がなくエラーが大きくなってしまうことに注意.
+        if(joint->dq_upper() - joint->dq_lower() > 0.02){
+          joint->setJointVelocityRange(joint->dq_lower()+0.01,joint->dq_upper()-0.01);
+        }
+      }
     }
-    if(!robot->rootLink()->isFreeJoint()){
-      std::cerr << "\x1b[31m[" << this->m_profile.instance_name << "] " << "rootLink is not FreeJoint [" << fileName << "]" << "\x1b[39m" << std::endl;
-      return RTC::RTC_ERROR;
-    }
-    this->state_.init(robot);
 
     // joint limit table
-    std::string jointLimitTableStr; this->getProperty("joint_limit_table",jointLimitTableStr);
+    std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > > jointLimitTables(robot->numJoints());
     {
-      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTables = joint_limit_table::readJointLimitTablesFromProperty (this->state_.robot, jointLimitTableStr);
-      for(size_t i=0;i<jointLimitTables.size();i++){
+      std::string jointLimitTableStr; this->getProperty("joint_limit_table",jointLimitTableStr);
+      std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > jointLimitTablesRaw = joint_limit_table::readJointLimitTablesFromProperty (robot, jointLimitTableStr);
+      for(size_t i=0;i<jointLimitTablesRaw.size();i++){
         // apply margin
-        for(size_t j=0;j<jointLimitTables[i]->lLimitTable().size();j++){
-          if(jointLimitTables[i]->uLimitTable()[j] - jointLimitTables[i]->lLimitTable()[j] > 0.002){
-            jointLimitTables[i]->uLimitTable()[j] -= 0.001;
-            jointLimitTables[i]->lLimitTable()[j] += 0.001;
+        for(size_t j=0;j<jointLimitTablesRaw[i]->lLimitTable().size();j++){
+          if(jointLimitTablesRaw[i]->uLimitTable()[j] - jointLimitTablesRaw[i]->lLimitTable()[j] > 0.002){
+            jointLimitTablesRaw[i]->uLimitTable()[j] -= 0.001;
+            jointLimitTablesRaw[i]->lLimitTable()[j] += 0.001;
           }
         }
-        this->state_.jointLimitTables[jointLimitTables[i]->getSelfJoint()->jointId()].push_back(jointLimitTables[i]);
+        jointLimitTables[jointLimitTablesRaw[i]->getSelfJoint()->jointId()].push_back(jointLimitTablesRaw[i]);
       }
     }
 
-    // apply margin to jointlimit
-    for(int i=0;i<this->state_.robot->numJoints();i++){
-      cnoid::LinkPtr joint = this->state_.robot->joint(i);
-      if(joint->q_upper() - joint->q_lower() > 0.002){
-        joint->setJointRange(joint->q_lower()+0.001,joint->q_upper()-0.001);
-      }
-      // JointVelocityについて. 1.0だと安全.4.0は脚.10.0はlapid manipulation らしい. limitを小さくしすぎた状態で、速い指令を送ると、狭いlimitの中で高優先度タスクを頑張って満たそうとすることで、低優先度タスクを満たす余裕がなくエラーが大きくなってしまうことに注意.
-      if(joint->dq_upper() - joint->dq_lower() > 0.02){
-        joint->setJointVelocityRange(joint->dq_lower()+0.01,joint->dq_upper()-0.01);
-      }
-    }
+    this->state_.init(robot, jointLimitTables);
+
+
   }
 
   // init modules

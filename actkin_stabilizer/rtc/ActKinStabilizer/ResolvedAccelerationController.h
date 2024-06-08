@@ -19,8 +19,6 @@ namespace actkin_stabilizer {
   class ResolvedAccelerationController{
   public:
     // ResolvedAccelerationControllerでしか使わないパラメータ
-    double joint_K = 1.0; // 0以上
-    double joint_D = 1.0; // 0以上
     std::vector<cpp_filters::TwoPointInterpolator<double> > aikdqWeight; // 要素数と順序はrobot->numJoints()と同じ. 0より大きい. 各関節の速度に対するダンピング項の比. default 1. 動かしたくない関節は大きくする. 全く動かしたくないなら、controllable_jointsを使うこと. resolved acceleration control用
 
     void init(State& state);
@@ -30,22 +28,8 @@ namespace actkin_stabilizer {
     void onStartStabilizer();
 
   protected:
-    // // 計算高速化のためのキャッシュ. クリアしなくても別に副作用はない.
-    // mutable std::shared_ptr<prioritized_qp_osqp::Task> constraintTask_ = std::make_shared<prioritized_qp_osqp::Task>();
-    // mutable std::shared_ptr<prioritized_qp_osqp::Task> tgtForceTask_ = std::make_shared<prioritized_qp_osqp::Task>();
-    // mutable std::shared_ptr<prioritized_qp_osqp::Task> tgtTorqueTask_ = std::make_shared<prioritized_qp_osqp::Task>();
-    // mutable std::shared_ptr<prioritized_qp_osqp::Task> normTask_ = std::make_shared<prioritized_qp_osqp::Task>();
-
-    // // 内部にヤコビアンの情報をキャッシュするが、クリアしなくても副作用はあまりない
-    // // aik
-    // mutable std::vector<std::shared_ptr<aik_constraint::PositionConstraint> > aikEEPositionConstraint; // 要素数と順序はendEffectorsと同じ.
-    // mutable std::vector<std::shared_ptr<aik_constraint::JointAngleConstraint> > aikRefJointAngleConstraint; // 要素数と順序はrobot->numJoints()と同じ
-    // mutable std::shared_ptr<aik_constraint::PositionConstraint> aikRootPositionConstraint = std::make_shared<aik_constraint::PositionConstraint>();
-    // mutable std::shared_ptr<aik_constraint::COMConstraint> aikComConstraint = std::make_shared<aik_constraint::COMConstraint>();
-    // mutable std::shared_ptr<aik_constraint::AngularMomentumConstraint> aikAngularMomentumConstraint = std::make_shared<aik_constraint::AngularMomentumConstraint>();
-    // mutable std::vector<std::shared_ptr<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint> > aikJointLimitConstraint;
-    // mutable std::vector<std::shared_ptr<aik_constraint::ClientCollisionConstraint> > aikSelfCollisionConstraint;
-    // mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > aikTasks;
+    // 計算高速化のためのキャッシュ. 初期化しなくてもよい
+    mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks;
 
   public:
     bool execResolvedAccelerationController(const State& state, const Goal& goal, const std::string& instance_name, double dt) const;
@@ -54,14 +38,15 @@ namespace actkin_stabilizer {
     bool calcContactState(const State& state,
                           const Goal& goal,
                           const std::string& instance_name,
-                          std::vector<std::shared_ptr<RefContact> >& allNextContacts) const;
+                          std::vector<std::shared_ptr<RefContact> >& allNextContacts,
+                          std::vector<std::shared_ptr<Contact> >& redundantContacts) const;
 
     bool calcVariables(const State& state,
                        const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
                        const std::string& instance_name,
                        std::vector<cnoid::LinkPtr>& joints,
                        std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
-                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointLimitConstraints,
                        std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints) const;
 
     bool calcEOMConstraints(const State& state,
@@ -69,6 +54,7 @@ namespace actkin_stabilizer {
                             std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints) const;
 
     bool calcPenetrationConstraints(const State& state,
+                                    const std::vector<std::shared_ptr<Contact> >& redundantContacts,
                                     const std::string& instance_name,
                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints) const;
 
@@ -81,13 +67,13 @@ namespace actkin_stabilizer {
                                            const std::string& instance_name,
                                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints) const;
 
-    bool calcCOMContactConstraints(const State& state,
-                                   const Goal& goals,
-                                   const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
-                                   const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
-                                   const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
-                                   const std::string& instance_name,
-                                   std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const;
+    bool calcCOMConstraints(const State& state,
+                            const Goal& goals,
+                            const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
+                            const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                            const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
+                            const std::string& instance_name,
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const;
 
     bool calcEEFConstraints(const State& state,
                             const Goal& goals,
@@ -106,6 +92,7 @@ namespace actkin_stabilizer {
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints,

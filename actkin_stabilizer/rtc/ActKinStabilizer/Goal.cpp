@@ -130,6 +130,25 @@ namespace actkin_stabilizer{
         continue;
       }
 
+      {
+        if(!eeGoal->positionConstraint){
+          eeGoal->positionConstraint = std::make_shared<aik_constraint::PositionConstraint>();
+        }
+        eeGoal->positionConstraint->A_link() = eeGoal->link;
+        eeGoal->positionConstraint->A_localpos() = eeGoal->localPose;
+        eeGoal->positionConstraint->B_link() = nullptr;
+        for(int i=0;i<6;i++){
+          eeGoal->positionConstraint->weight()[i] = eeGoal->freeAxis[i] ? 0.0 : 1.0;
+        }
+        eeGoal->positionConstraint->eval_link() = nullptr;
+        eeGoal->positionConstraint->maxAccByPosError() = 5 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraint->maxAccByVelError() = 10 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraint->maxAcc() = 15 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraint->pgain() << this->Kp, this->Kp, this->Kp, this->Kr, this->Kr, this->Kr;
+        eeGoal->positionConstraint->dgain() << this->Dp, this->Dp, this->Dp, this->Dr, this->Dr, this->Dr;
+      }
+
+
       nextEEGoals[name] = eeGoal;
     }
 
@@ -192,6 +211,20 @@ namespace actkin_stabilizer{
         std::cerr << __FUNCTION__ << "trajectory is empty" << std::endl;
         continue;
       }
+
+      if(!vrpGoal->comConstraint){
+        vrpGoal->comConstraint = std::make_shared<aik_constraint::COMConstraint>();
+      }
+      vrpGoal->comConstraint->A_robot() = state.robot;
+      vrpGoal->comConstraint->weight() << 1.0, 1.0, 0.3;
+      vrpGoal->comConstraint->pgain().setZero();
+      vrpGoal->comConstraint->dgain().setZero();
+
+      if(!vrpGoal->angularMomentumConstraint){
+        vrpGoal->angularMomentumConstraint = std::make_shared<aik_constraint::AngularMomentumConstraint>();
+      }
+      vrpGoal->angularMomentumConstraint->robot() = state.robot;
+      vrpGoal->angularMomentumConstraint->weight() << 0.1, 0.1, 0.1;
 
       nextVRPGoals.push_back(vrpGoal);
     }
@@ -262,6 +295,17 @@ namespace actkin_stabilizer{
       if(qGoal->q.size() == 0) {
         std::cerr << __FUNCTION__ << "trajectory is empty" << std::endl;
         continue;
+      }
+
+      qGoal->jointAngleConstraints.resize(state.robot->numJoints());
+      for(int j=0;j<state.robot->numJoints();j++){
+        if(!qGoal->jointAngleConstraints[j]) qGoal->jointAngleConstraints[j] = std::make_shared<aik_constraint::JointAngleConstraint>();
+        qGoal->jointAngleConstraints[j]->joint() = state.robot->joint(i);
+        qGoal->jointAngleConstraints[j]->pgain() = 400.0;
+        qGoal->jointAngleConstraints[j]->dgain() = 50.0;
+        qGoal->jointAngleConstraints[j]->maxAccByPosError() = 3.0;
+        qGoal->jointAngleConstraints[j]->maxAccByVelError() = 10.0;
+        qGoal->jointAngleConstraints[j]->maxAcc() = 15.0;
       }
 
       nextqGoals.push_back(qGoal);
@@ -356,6 +400,18 @@ namespace actkin_stabilizer{
       contactGoal->forceConstraint->dl() = contactGoal->wrenchld;
       contactGoal->forceConstraint->du() = contactGoal->wrenchud;
       contactGoal->forceConstraint->C() = contactGoal->wrenchC;
+
+      if(!contactGoal->positionConstraint) {
+        contactGoal->positionConstraint = std::make_shared<aik_constraint::PositionConstraint>();
+      }
+      contactGoal->positionConstraint->A_link() = contactGoal->link1;
+      contactGoal->positionConstraint->A_localpos() = contactGoal->localPose1;
+      contactGoal->positionConstraint->B_link() = contactGoal->link2;
+      contactGoal->positionConstraint->B_localpos() = (contactGoal->positionConstraint->B_link() ? contactGoal->positionConstraint->B_link()->T().inverse() : cnoid::Isometry3::Identity()) * (contactGoal->positionConstraint->A_link() ? contactGoal->positionConstraint->A_link()->T() * contactGoal->positionConstraint->A_localpos() : contactGoal->positionConstraint->A_localpos());
+      // 相対加速度0
+      contactGoal->positionConstraint->pgain().setZero();
+      contactGoal->positionConstraint->dgain().setZero();
+      contactGoal->positionConstraint->ref_acc().setZero();
 
       nextContactGoals[name] = contactGoal;
     }

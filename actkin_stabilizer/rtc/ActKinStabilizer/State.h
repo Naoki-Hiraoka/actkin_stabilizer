@@ -10,9 +10,10 @@
 #include <cpp_filters/TwoPointInterpolator.h>
 #include <cpp_filters/FirstOrderLowPassFilter.h>
 #include <joint_limit_table/JointLimitTable.h>
-#include <ik_constraint2/PositionConstraint.h>
+#include <aik_constraint/aik_constraint.h>
 #include "FootGuidedController.h"
 #include <actkin_stabilizer/idl/ActKinStabilizerService.hh>
+#include <aik_constraint_joint_limit_table/aik_constraint_joint_limit_table.h>
 #include <contact_state_msgs/idl/ContactState.hh>
 
 
@@ -64,6 +65,10 @@ namespace actkin_stabilizer {
     std::vector<bool> jointControllable; // MODE_ST中はconstant. 要素数と順序はnumJoints()と同じ. falseの場合、RACでは動かさない(act値をそのまま). WDでは無視. トルク計算では目標トルクを通常通り計算した後、refTauの値で上書きされる.
     std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > > jointLimitTables; // constant. 要素数と順序はnumJoints()と同じ. for robot.
 
+    // constraints
+    std::vector<std::shared_ptr<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint> > jointLimitConstraints;
+    std::shared_ptr<aik_constraint::EOMConstraint> eomConstraint;
+
     const double g = 9.80665; // constant. 重力加速度
     std::unordered_map<std::string, cnoid::LinkPtr> linkNameMap; // MODE_ST中はconstant. URDFのLink名 -> linkPtr
 
@@ -74,7 +79,7 @@ namespace actkin_stabilizer {
 
   public:
     // RTC起動時に一回呼ばれる.
-    void init(const cnoid::BodyPtr& robot_);
+    void init(const cnoid::BodyPtr& robot_, const std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > >& jointLimitTables_);
 
     // startStabilizer時に呼ばれる
     void onStartStabilizer();
