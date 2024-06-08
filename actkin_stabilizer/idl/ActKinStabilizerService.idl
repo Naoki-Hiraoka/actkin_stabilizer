@@ -74,7 +74,7 @@ module actkin_stabilizer
     // boolean setRefVRP(in actkin_stabilizer_msgs::RefVRPIdl refVRP);
     // boolean setRefContact(in actkin_stabilizer_msgs::RefContactSequence refContact);
     // boolean setRefq(in actkin_stabilizer_msgs::RefqIdl refq);
-    // boolean setRefState(in actkin_stabilizer_msgs::RefStateIdl refState);
+    boolean setRefState(in actkin_stabilizer_msgs::RefStateIdl refState);
   };
 
   // enum Priority {

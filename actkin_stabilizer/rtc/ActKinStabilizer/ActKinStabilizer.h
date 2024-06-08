@@ -43,6 +43,8 @@ public:
   bool setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
   bool getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
 
+  bool setRefState(const actkin_stabilizer_msgs::RefStateIdl& i_param);
+
 protected:
   std::mutex mutex_;
 
@@ -66,6 +68,7 @@ protected:
 
     actkin_stabilizer_msgs::RefStateIdl m_refState_;
     RTC::InPort<actkin_stabilizer_msgs::RefStateIdl> m_refStateIn_;
+    bool m_refStatereUpdatedByService_ = false;
 
     collision_checker_msgs::TimedCollisionSeq m_selfCollision_; // generate frame. genRobotの自己干渉の最近傍点
     RTC::InPort<collision_checker_msgs::TimedCollisionSeq> m_selfCollisionIn_;

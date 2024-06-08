@@ -30,6 +30,11 @@ CORBA::Boolean ActKinStabilizerService_impl::getActKinStabilizerParam(actkin_sta
   return this->comp_->getActKinStabilizerParam(*i_param);
 };
 
+CORBA::Boolean ActKinStabilizerService_impl::setRefState(const actkin_stabilizer_msgs::RefStateIdl& i_param)
+{
+  return this->comp_->setRefState(i_param);
+}
+
 void ActKinStabilizerService_impl::setComp(ActKinStabilizer *i_comp)
 {
   this->comp_ = i_comp;

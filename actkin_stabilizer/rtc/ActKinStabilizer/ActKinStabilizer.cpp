@@ -155,8 +155,9 @@ bool ActKinStabilizer::readInPortDataForState(ActKinStabilizer::Ports& ports, co
 // static function
 bool ActKinStabilizer::readInPortDataForGoal(ActKinStabilizer::Ports& ports, const std::string& instance_name, const double& dt, const actkin_stabilizer::State& state,
                                              actkin_stabilizer::Goal& goal){
-  if(ports.m_refStateIn_.isNew()){
+  if(ports.m_refStateIn_.isNew() || ports.m_refStatereUpdatedByService_){
     while(ports.m_refStateIn_.isNew()) ports.m_refStateIn_.read();
+    ports.m_refStatereUpdatedByService_ = false;
     goal.updateFromIdl(state, ports.m_refState_);
   }
   goal.interpolate(dt);
@@ -282,6 +283,13 @@ bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabili
   std::lock_guard<std::mutex> guard(this->mutex_);
 
   // TODO
+  return true;
+}
+
+bool ActKinStabilizer::setRefState(const actkin_stabilizer_msgs::RefStateIdl& i_param) {
+  std::lock_guard<std::mutex> guard(this->mutex_);
+  this->ports_.m_refState_ = i_param;
+  this->ports_.m_refStateUpdatedByService_ = true;
   return true;
 }
 

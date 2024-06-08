@@ -18,6 +18,8 @@ public:
 
   CORBA::Boolean setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param);
   CORBA::Boolean getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam_out i_param);
+
+  CORBA::Boolean setRefState(const actkin_stabilizer_msgs::RefStateIdl& i_param);
   //
   //
   void setComp(ActKinStabilizer *i_comp);
