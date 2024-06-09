@@ -48,7 +48,8 @@ public:
 protected:
   std::mutex mutex_;
 
-  unsigned long long loop_;
+  unsigned long long loop_ = 0;
+  int debugLevel_ = 0;
 
   class Ports {
   public:

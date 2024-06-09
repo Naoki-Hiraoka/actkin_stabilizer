@@ -20,6 +20,7 @@ namespace actkin_stabilizer {
   public:
     // ResolvedAccelerationControllerでしか使わないパラメータ
     std::vector<cpp_filters::TwoPointInterpolator<double> > aikdqWeight; // 要素数と順序はrobot->numJoints()と同じ. 0より大きい. 各関節の速度に対するダンピング項の比. default 1. 動かしたくない関節は大きくする. 全く動かしたくないなら、controllable_jointsを使うこと. resolved acceleration control用
+    int debugLevel = 0;
 
     void init(State& state);
 

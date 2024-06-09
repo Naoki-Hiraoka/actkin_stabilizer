@@ -37,7 +37,7 @@ namespace actkin_stabilizer {
       constraint->maxAcc() = 15.0;
       constraint->maxAccByPosError() = 5.0;
       constraint->maxAccByVelError() = 20.0;
-      constraint->weight() = 0.1;
+      constraint->weight() = 1.0;
       this->jointLimitConstraints[i] = constraint;
     }
     this->eomConstraint = std::make_shared<aik_constraint::EOMConstraint>();
@@ -115,28 +115,30 @@ namespace actkin_stabilizer {
   }
 
   void State::updateContactFromIdl(const contact_state_msgs::TimedContactSeq& m_actContactState){
-    this->contacts.clear();
+    this->contacts.resize(m_actContactState.data.length());
+    int numContact= 0;
     for(int i=0;i<m_actContactState.data.length();i++){
-      std::shared_ptr<Contact> contact = std::make_shared<Contact>();
+      if(!this->contacts[numContact]) this->contacts[numContact] = std::make_shared<Contact>();
       if(this->linkNameMap.find(std::string(m_actContactState.data[i].link1)) == this->linkNameMap.end()){
         std::cerr << __FUNCTION__ << m_actContactState.data[i].link1 << " not found" << std::endl;
         continue;
       }
-      contact->link1 = this->linkNameMap[std::string(m_actContactState.data[i].link1)];
+      this->contacts[numContact]->link1 = this->linkNameMap[std::string(m_actContactState.data[i].link1)];
       if(!rtm_data_tools::isAllFinite(m_actContactState.data[i].local_pose)){
         std::cerr << __FUNCTION__ << "local_pose not finite" << std::endl;
         continue;
       }
-      eigen_rtm_conversions::poseRTMToEigen(m_actContactState.data[i].local_pose, contact->localPose1);
+      eigen_rtm_conversions::poseRTMToEigen(m_actContactState.data[i].local_pose, this->contacts[numContact]->localPose1);
       if(this->linkNameMap.find(std::string(m_actContactState.data[i].link2)) == this->linkNameMap.end()){
         std::cerr << __FUNCTION__ << m_actContactState.data[i].link2 << " not found" << std::endl;
         continue;
       }
-      contact->link2 = this->linkNameMap[std::string(m_actContactState.data[i].link2)];
-      contact->freeX = m_actContactState.data[i].free_x;
-      contact->freeY = m_actContactState.data[i].free_y;
-      this->contacts.push_back(contact);
+      this->contacts[numContact]->link2 = this->linkNameMap[std::string(m_actContactState.data[i].link2)];
+      this->contacts[numContact]->freeX = m_actContactState.data[i].free_x;
+      this->contacts[numContact]->freeY = m_actContactState.data[i].free_y;
+      numContact++;
     }
+    this->contacts.resize(numContact);
   }
 
 };

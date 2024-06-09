@@ -241,6 +241,7 @@ namespace actkin_stabilizer {
                                                                   std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints) const{
     keepContactConstraints.clear();
     for(int i=0;i<allNextContacts.size();i++){
+      allNextContacts[i]->positionConstraint->B_localpos() = (allNextContacts[i]->positionConstraint->B_link() ? allNextContacts[i]->positionConstraint->B_link()->T().inverse() : cnoid::Isometry3::Identity()) * (allNextContacts[i]->positionConstraint->A_link() ? allNextContacts[i]->positionConstraint->A_link()->T() * allNextContacts[i]->positionConstraint->A_localpos() : allNextContacts[i]->positionConstraint->A_localpos());
       keepContactConstraints.push_back(allNextContacts[i]->positionConstraint);
     }
     return true;
@@ -403,8 +404,14 @@ namespace actkin_stabilizer {
       constraints.push_back(constraints_);
     }
 
+    for(int i=0;i<constraints.size();i++){
+      for(int j=0;j<constraints[i].size();j++){
+        constraints[i][j]->debugLevel() = this->debugLevel;
+      }
+    }
+
     prioritized_acc_inverse_kinematics_solver::IKParam param;
-    param.debugLevel = 0;
+    param.debugLevel = this->debugLevel;
     param.ddqWeight = 1e-6;
     param.forceWeight = 1e-12;
     bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
@@ -421,13 +428,15 @@ namespace actkin_stabilizer {
   bool ResolvedAccelerationController::calcTorque(const State& state,
                                                   const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
                                                   const std::string& instance_name) const{
-
+    state.robot->rootLink()->dv()[2] += state.g; // 重力補償
+    state.robot->calcForwardKinematics(true,true);
+    state.robot->calcCenterOfMass();
     cnoid::calcInverseDynamics(state.robot->rootLink());
     for(int i=0;i<activeNextContacts.size();i++){
       for(int l=0;l<2;l++){
         cnoid::LinkPtr link;
         if(l==0) link = activeNextContacts[i]->link1;
-        else link = activeNextContacts[i]->link1;
+        else link = activeNextContacts[i]->link2;
         if(link == nullptr || link->body() != state.robot) continue;
         cnoid::Isometry3 contactPose = (activeNextContacts[i]->link1 ? activeNextContacts[i]->link1->T() * activeNextContacts[i]->localPose1 : activeNextContacts[i]->localPose1);
         cnoid::JointPath jointPath(state.robot->rootLink(), link);
@@ -442,6 +451,16 @@ namespace actkin_stabilizer {
         for(int j=0;j<jointPath.numJoints();j++){
           jointPath.joint(j)->u() += tau[j];
         }
+      }
+    }
+
+    for(int i=0;i<state.robot->numJoints();i++){
+      if(state.jointControllable[i]){
+        cnoid::LinkPtr joint = state.robot->joint(i);
+        joint->u() = std::min(joint->u_upper(),std::max(joint->u_lower(),joint->u()));
+        joint->u() = std::min(state.softMaxTorque[i],std::max(-state.softMaxTorque[i],joint->u()));
+      }else{
+        state.robot->joint(i)->u() = 0.0;
       }
     }
     return true;

@@ -129,9 +129,6 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
   // init modules
   this->resolvedAccelerationController_.init(this->state_);
 
-  // initialize parameters
-  this->loop_ = 0;
-
   return RTC::RTC_OK;
 }
 

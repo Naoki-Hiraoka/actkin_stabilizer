@@ -12,6 +12,7 @@ namespace actkin_stabilizer{
     this->updateFromIdl(state, m_refState.refEEPose);
     this->updateFromIdl(state, m_refState.refVRP);
     this->updateFromIdl(state, m_refState.refq);
+    this->updateFromIdl(state, m_refState.refContact);
   }
 
   void Goal::updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefEESequence& m_refEEPose){
@@ -300,7 +301,7 @@ namespace actkin_stabilizer{
       qGoal->jointAngleConstraints.resize(state.robot->numJoints());
       for(int j=0;j<state.robot->numJoints();j++){
         if(!qGoal->jointAngleConstraints[j]) qGoal->jointAngleConstraints[j] = std::make_shared<aik_constraint::JointAngleConstraint>();
-        qGoal->jointAngleConstraints[j]->joint() = state.robot->joint(i);
+        qGoal->jointAngleConstraints[j]->joint() = state.robot->joint(j);
         qGoal->jointAngleConstraints[j]->pgain() = 400.0;
         qGoal->jointAngleConstraints[j]->dgain() = 50.0;
         qGoal->jointAngleConstraints[j]->maxAccByPosError() = 3.0;
@@ -407,7 +408,6 @@ namespace actkin_stabilizer{
       contactGoal->positionConstraint->A_link() = contactGoal->link1;
       contactGoal->positionConstraint->A_localpos() = contactGoal->localPose1;
       contactGoal->positionConstraint->B_link() = contactGoal->link2;
-      contactGoal->positionConstraint->B_localpos() = (contactGoal->positionConstraint->B_link() ? contactGoal->positionConstraint->B_link()->T().inverse() : cnoid::Isometry3::Identity()) * (contactGoal->positionConstraint->A_link() ? contactGoal->positionConstraint->A_link()->T() * contactGoal->positionConstraint->A_localpos() : contactGoal->positionConstraint->A_localpos());
       // 相対加速度0
       contactGoal->positionConstraint->pgain().setZero();
       contactGoal->positionConstraint->dgain().setZero();
@@ -430,25 +430,25 @@ namespace actkin_stabilizer{
 
   void Goal::interpolate(double dt){
     for(std::unordered_map<std::string, std::shared_ptr<RefEE> >::iterator it = this->eeGoals.begin(); it!=this->eeGoals.end(); it++){
-      if(it->second->pose[0].isEmpty() && it->second->pose.size() > 0){
+      if(it->second->pose[0].isEmpty() && it->second->pose.size() > 1){
         it->second->pose.erase(it->second->pose.begin());
       }
       it->second->pose[0].interpolate(dt);
-      if(it->second->wrench[0].isEmpty() && it->second->wrench.size() > 0){
+      if(it->second->wrench[0].isEmpty() && it->second->wrench.size() > 1){
         it->second->wrench.erase(it->second->wrench.begin());
       }
       it->second->wrench[0].interpolate(dt);
     }
 
     for(int i=0;i<this->vrpGoals.size();i++){
-      if(this->vrpGoals[i]->vrp[0].isEmpty() && this->vrpGoals[i]->vrp.size() > 0){
+      if(this->vrpGoals[i]->vrp[0].isEmpty() && this->vrpGoals[i]->vrp.size() > 1){
         this->vrpGoals[i]->vrp.erase(this->vrpGoals[i]->vrp.begin());
       }
       this->vrpGoals[i]->vrp[0].interpolate(dt);
     }
 
     for(int i=0;i<this->qGoals.size();i++){
-      if(this->qGoals[i]->q[0].isEmpty() && this->qGoals[i]->q.size() > 0){
+      if(this->qGoals[i]->q[0].isEmpty() && this->qGoals[i]->q.size() > 1){
         this->qGoals[i]->q.erase(this->qGoals[i]->q.begin());
       }
       this->qGoals[i]->q[0].interpolate(dt);
