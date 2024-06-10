@@ -225,7 +225,7 @@ namespace actkin_stabilizer{
         vrpGoal->angularMomentumConstraint = std::make_shared<aik_constraint::AngularMomentumConstraint>();
       }
       vrpGoal->angularMomentumConstraint->robot() = state.robot;
-      vrpGoal->angularMomentumConstraint->weight() << 0.3, 0.3, 0.3;
+      vrpGoal->angularMomentumConstraint->weight() << 0.1, 0.1, 0.1;
 
       nextVRPGoals.push_back(vrpGoal);
     }

@@ -211,7 +211,7 @@ RTC::ReturnCode_t ActKinStabilizer::onExecute(RTC::UniqueId ec_id){
   // startST直後の一回のみ実行
   if(this->mode_.isSyncToSTInit()){
     this->state_.onStartStabilizer();
-    this->goal_.onStartStabilizer(); // 古いgoalを削除
+    this->goal_.onStartStabilizer(); // 古いgoalを削除. stopSTしてからstartSTするまでに何らかの形でgoalを与える必要がある.
     this->resolvedAccelerationController_.onStartStabilizer();
   }
 

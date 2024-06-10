@@ -33,7 +33,7 @@ namespace actkin_stabilizer {
       constraint->joint() = this->robot->joint(i);
       constraint->jointLimitTables() = this->jointLimitTables[i];
       constraint->pgain() = 400;
-      constraint->dgain() = 100;
+      constraint->dgain() = 50;
       constraint->maxAcc() = 15.0;
       constraint->maxAccByPosError() = 5.0;
       constraint->maxAccByVelError() = 20.0;

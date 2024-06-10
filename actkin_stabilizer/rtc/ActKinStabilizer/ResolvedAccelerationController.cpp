@@ -330,6 +330,8 @@ namespace actkin_stabilizer {
       }else{
         eefLowConstraints.push_back(it->second->positionConstraint);
       }
+
+      //it->second->positionConstraint->debugLevel() = 2;
     }
     return true;
   }
@@ -415,6 +417,10 @@ namespace actkin_stabilizer {
       constraints.push_back(constraints_);
     }
 
+    for(int i=0;i<forces.size();i++){
+      forces[i]->F().setZero(); // forceWeightでのノルム最小化のみで分配するため.
+    }
+
     for(int i=0;i<constraints.size();i++){
       for(int j=0;j<constraints[i].size();j++){
         constraints[i][j]->debugLevel() = this->debugLevel;
@@ -423,7 +429,7 @@ namespace actkin_stabilizer {
 
     prioritized_acc_inverse_kinematics_solver::IKParam param;
     param.debugLevel = this->debugLevel;
-    // param.debugLevel = 2;
+    //param.debugLevel = 2;
     param.ddqWeight = 1e-6;
     param.forceWeight = 1e-12;
     bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
