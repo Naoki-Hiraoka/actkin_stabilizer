@@ -100,8 +100,14 @@ namespace actkin_stabilizer {
 
     // 重心の目標加速度.
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > comConstraints;
-    this->calcCOMConstraints(state, goal, forces, forceConstraints, eomConstraints, instance_name,
-                             comConstraints);
+    bool solved1 = this->calcCOMConstraints(state, goal, forces, forceConstraints, eomConstraints, instance_name,
+                                           comConstraints);
+    if(!solved1){
+      for(int i=0;i<state.robot->numJoints();i++){
+        state.robot->joint(i)->u() = 0.0;
+      }
+      return false;
+    }
 
     // EEFの目標加速度
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefHighConstraints;
@@ -116,7 +122,7 @@ namespace actkin_stabilizer {
                                jointAngleConstraints, angularMomentumConstraints);
 
     // QPを解いて、ddqとFに入れる.
-    bool solved = this->calcRAC(jointLimitConstraints,
+    bool solved2 = this->calcRAC(jointLimitConstraints,
                                 forceConstraints,
                                 eomConstraints,
                                 penetrationConstraints,
@@ -130,15 +136,15 @@ namespace actkin_stabilizer {
                                 instance_name,
                                 joints,
                                 forces);
-
-    if(solved){
-      // ddqとFからトルクを求めuに入れる.uの値を上下限でリミット
-      this->calcTorque(state, activeNextContacts, instance_name);
-    }else{
+    if(!solved2){
       for(int i=0;i<state.robot->numJoints();i++){
         state.robot->joint(i)->u() = 0.0;
       }
+      return false;
     }
+
+    // ddqとFからトルクを求めuに入れる.uの値を上下限でリミット
+    this->calcTorque(state, activeNextContacts, instance_name);
 
     return true;
   }
@@ -292,11 +298,65 @@ namespace actkin_stabilizer {
                                                                                 traj);
     cnoid::Vector3 acc = std::pow(goal.vrpGoals[0]->omega, 2) * (state.robot->centerOfMass() - vrp);
 
-    for(int i=0;i<2;i++) acc[i] = std::min(0.5,std::max(-0.5,acc[i])); // TODO
+    // accを支持領域でlimitする.
+    if(acc.norm()!=0){
+      cnoid::Vector3 F = acc * state.robot->mass();
+      cnoid::Vector3 dir = F.normalized();
+      double f = F.norm();
+      for(int i=0;i<3;i++) {
+        goal.vrpGoals[0]->force->S().coeffRef(i,0) = dir[i];
+      }
+      goal.vrpGoals[0]->force->A_localpos().translation() = state.robot->centerOfMass();
+      goal.vrpGoals[0]->forceConstraint->dl()[0] = f;
+      goal.vrpGoals[0]->forceConstraint->du()[0] = f;
 
-    goal.vrpGoals[0]->comConstraint->ref_acc() = acc; // TODO limit
+      std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
+      forces2.push_back(goal.vrpGoals[0]->force);
+      forces2.insert(forces2.end(), forces.begin(), forces.end());
+
+      std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
+
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
+        constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.push_back(goal.vrpGoals[0]->forceConstraint);
+        constraints.push_back(constraints_);
+      }
+
+      for(int i=0;i<forces2.size();i++){
+        forces2[i]->F().setZero(); // この方が安定する
+      }
+
+      for(int i=0;i<constraints.size();i++){
+        for(int j=0;j<constraints[i].size();j++){
+          constraints[i][j]->debugLevel() = this->debugLevel;
+        }
+      }
+
+      prioritized_acc_inverse_kinematics_solver::IKParam param;
+      param.debugLevel = this->debugLevel;
+      //param.debugLevel = 2;
+      param.forceWeight = 1e-12;
+      bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
+                                                                        forces2,
+                                                                        constraints,
+                                                                        this->prevTasks_COM,
+                                                                        param);
+      if(!solved){
+        std::cerr << "[" << instance_name << "] COM acceleration cannot be determined!" << std::endl;
+        return false;
+      }
+
+      acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F()).head<3>() / state.robot->mass();
+    }
+
+    goal.vrpGoals[0]->comConstraint->ref_acc() = acc;
     comConstraints.push_back(goal.vrpGoals[0]->comConstraint);
-
 
     //goal.vrpGoals[0]->comConstraint->debugLevel() = 2;
 

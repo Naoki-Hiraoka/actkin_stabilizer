@@ -221,6 +221,23 @@ namespace actkin_stabilizer{
       vrpGoal->comConstraint->pgain().setZero();
       vrpGoal->comConstraint->dgain().setZero();
 
+      if(!vrpGoal->force) {
+        vrpGoal->force = std::make_shared<aik_constraint::Force>();
+        vrpGoal->force->F() = cnoid::VectorX::Zero(1);
+        vrpGoal->force->S().resize(6,1);
+        for(int j=0;j<3;j++) vrpGoal->force->S().insert(j,0) = 1.0;
+        vrpGoal->force->B_link() = state.robot->rootLink();
+      }
+
+      if(!vrpGoal->forceConstraint){
+        vrpGoal->forceConstraint = std::make_shared<aik_constraint::ForceConstraint>();
+        vrpGoal->forceConstraint->force() = vrpGoal->force;
+        vrpGoal->forceConstraint->dl() = cnoid::VectorX::Zero(1);
+        vrpGoal->forceConstraint->du() = cnoid::VectorX::Zero(1);
+        vrpGoal->forceConstraint->C().resize(1,1);
+        vrpGoal->forceConstraint->C().insert(0,0) = 1.0;
+      }
+
       if(!vrpGoal->angularMomentumConstraint){
         vrpGoal->angularMomentumConstraint = std::make_shared<aik_constraint::AngularMomentumConstraint>();
       }
@@ -401,6 +418,19 @@ namespace actkin_stabilizer{
       contactGoal->forceConstraint->dl() = contactGoal->wrenchld;
       contactGoal->forceConstraint->du() = contactGoal->wrenchud;
       contactGoal->forceConstraint->C() = contactGoal->wrenchC;
+
+      if(!contactGoal->forceReductionConstraint){
+        contactGoal->forceReductionConstraint = std::make_shared<aik_constraint::ForceConstraint>();
+      }
+      contactGoal->forceReductionConstraint->force() = contactGoal->force;
+      contactGoal->forceReductionConstraint->dl() = Eigen::VectorXd::Zero(5);
+      contactGoal->forceReductionConstraint->C().resize(5,6);
+      contactGoal->forceReductionConstraint->du() = Eigen::VectorXd::Zero(5);
+      contactGoal->forceReductionConstraint->C().insert(0,0) = 1e0;
+      contactGoal->forceReductionConstraint->C().insert(1,1) = 1e0;
+      contactGoal->forceReductionConstraint->C().insert(2,3) = 1e0;
+      contactGoal->forceReductionConstraint->C().insert(3,4) = 1e0;
+      contactGoal->forceReductionConstraint->C().insert(4,5) = 1e0;
 
       if(!contactGoal->positionConstraint) {
         contactGoal->positionConstraint = std::make_shared<aik_constraint::PositionConstraint>();

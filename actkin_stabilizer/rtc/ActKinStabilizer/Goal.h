@@ -39,6 +39,8 @@ namespace actkin_stabilizer {
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector3> > vrp; // 必ずサイズは1以上
 
     std::shared_ptr<aik_constraint::COMConstraint> comConstraint = nullptr;
+    std::shared_ptr<aik_constraint::Force> force = nullptr;
+    std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
     std::shared_ptr<aik_constraint::AngularMomentumConstraint> angularMomentumConstraint = nullptr;
   };
 
@@ -64,6 +66,7 @@ namespace actkin_stabilizer {
 
     std::shared_ptr<aik_constraint::Force> force = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
+    std::shared_ptr<aik_constraint::ForceConstraint> forceReductionConstraint = nullptr;
     std::shared_ptr<aik_constraint::PositionConstraint> positionConstraint = nullptr;
   };
 
