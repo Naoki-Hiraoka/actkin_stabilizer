@@ -138,8 +138,8 @@ namespace actkin_stabilizer{
         eeGoal->positionConstraint->A_link() = eeGoal->link;
         eeGoal->positionConstraint->A_localpos() = eeGoal->localPose;
         eeGoal->positionConstraint->B_link() = nullptr;
-        for(int i=0;i<6;i++){
-          eeGoal->positionConstraint->weight()[i] = eeGoal->freeAxis[i] ? 0.0 : 1.0;
+        for(int k=0;k<6;k++){
+          eeGoal->positionConstraint->weight()[k] = eeGoal->freeAxis[k] ? 0.0 : 1.0;
         }
         eeGoal->positionConstraint->eval_link() = nullptr;
         eeGoal->positionConstraint->maxAccByPosError() = 5 * cnoid::Vector6::Ones();
@@ -181,7 +181,7 @@ namespace actkin_stabilizer{
         vrpGoal->vrp[0].value(p,dp,ddp);
       }else{ // 今回始めて現れたvrp
         p = state.robot->centerOfMass();
-        dp = state.cogVel.value();
+        dp = state.cogVel;//state.cogVel.value();
         ddp.setZero();
       }
 
@@ -225,7 +225,7 @@ namespace actkin_stabilizer{
         vrpGoal->angularMomentumConstraint = std::make_shared<aik_constraint::AngularMomentumConstraint>();
       }
       vrpGoal->angularMomentumConstraint->robot() = state.robot;
-      vrpGoal->angularMomentumConstraint->weight() << 0.1, 0.1, 0.1;
+      vrpGoal->angularMomentumConstraint->weight() << 0.3, 0.3, 0.3;
 
       nextVRPGoals.push_back(vrpGoal);
     }
@@ -302,11 +302,11 @@ namespace actkin_stabilizer{
       for(int j=0;j<state.robot->numJoints();j++){
         if(!qGoal->jointAngleConstraints[j]) qGoal->jointAngleConstraints[j] = std::make_shared<aik_constraint::JointAngleConstraint>();
         qGoal->jointAngleConstraints[j]->joint() = state.robot->joint(j);
-        qGoal->jointAngleConstraints[j]->pgain() = 400.0;
-        qGoal->jointAngleConstraints[j]->dgain() = 50.0;
-        qGoal->jointAngleConstraints[j]->maxAccByPosError() = 3.0;
-        qGoal->jointAngleConstraints[j]->maxAccByVelError() = 10.0;
-        qGoal->jointAngleConstraints[j]->maxAcc() = 15.0;
+        // qGoal->jointAngleConstraints[j]->pgain() = 400.0;
+        // qGoal->jointAngleConstraints[j]->dgain() = 50.0;
+        // qGoal->jointAngleConstraints[j]->maxAccByPosError() = 3.0;
+        // qGoal->jointAngleConstraints[j]->maxAccByVelError() = 10.0;
+        // qGoal->jointAngleConstraints[j]->maxAcc() = 15.0;
       }
 
       nextqGoals.push_back(qGoal);

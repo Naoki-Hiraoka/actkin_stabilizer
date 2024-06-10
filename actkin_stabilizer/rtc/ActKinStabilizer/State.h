@@ -47,7 +47,8 @@ namespace actkin_stabilizer {
   public:
     // from data port. 狭義のstate
     cnoid::BodyPtr robot; // actual.
-    cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> cogVel{3.5, cnoid::Vector3::Zero()}; // generate frame.  現在のCOM速度. cutoff=4.0Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ
+    cnoid::Vector3 cogVel = cnoid::Vector3::Zero();
+    //cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> cogVel{3.5, cnoid::Vector3::Zero()}; // generate frame.  現在のCOM速度. cutoff=4.0Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ
 
     std::vector<std::shared_ptr<Contact> > contacts; // actual
     // objects

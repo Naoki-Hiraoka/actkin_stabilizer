@@ -211,6 +211,8 @@ namespace actkin_stabilizer {
     for(int i = 0; i < activeNextContacts.size(); i++){
       forces.push_back(activeNextContacts[i]->force);
       forceConstraints.push_back(activeNextContacts[i]->forceConstraint);
+
+      //activeNextContacts[i]->forceConstraint->debugLevel() = 2;
     }
 
     // TODO ref force
@@ -223,6 +225,8 @@ namespace actkin_stabilizer {
                                                           std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints) const{
     eomConstraints.clear();
     eomConstraints.push_back(state.eomConstraint);
+
+    //state.eomConstraint->debugLevel() = 2;
     return true;
   }
 
@@ -243,6 +247,8 @@ namespace actkin_stabilizer {
     for(int i=0;i<allNextContacts.size();i++){
       allNextContacts[i]->positionConstraint->B_localpos() = (allNextContacts[i]->positionConstraint->B_link() ? allNextContacts[i]->positionConstraint->B_link()->T().inverse() : cnoid::Isometry3::Identity()) * (allNextContacts[i]->positionConstraint->A_link() ? allNextContacts[i]->positionConstraint->A_link()->T() * allNextContacts[i]->positionConstraint->A_localpos() : allNextContacts[i]->positionConstraint->A_localpos());
       keepContactConstraints.push_back(allNextContacts[i]->positionConstraint);
+
+      //allNextContacts[i]->positionConstraint->debugLevel() = 2;
     }
     return true;
   }
@@ -279,15 +285,20 @@ namespace actkin_stabilizer {
                         goal.minHorizonTime - sum_t);
     }
 
-    cnoid::Vector3 cp = state.robot->centerOfMass() + state.cogVel.value() / goal.vrpGoals[0]->omega;
+    cnoid::Vector3 cp = state.robot->centerOfMass() + state.cogVel/*state.cogVel.value()*/ / goal.vrpGoals[0]->omega;
     cnoid::Vector3 vrp = cpp_controllers::calcFootGuidedControl<cnoid::Vector3>(goal.vrpGoals[0]->omega,
                                                                                 cnoid::Vector3::Zero(),
                                                                                 cp,
                                                                                 traj);
     cnoid::Vector3 acc = std::pow(goal.vrpGoals[0]->omega, 2) * (state.robot->centerOfMass() - vrp);
 
+    for(int i=0;i<2;i++) acc[i] = std::min(0.5,std::max(-0.5,acc[i])); // TODO
+
     goal.vrpGoals[0]->comConstraint->ref_acc() = acc; // TODO limit
     comConstraints.push_back(goal.vrpGoals[0]->comConstraint);
+
+
+    //goal.vrpGoals[0]->comConstraint->debugLevel() = 2;
 
     return true;
   }
@@ -412,6 +423,7 @@ namespace actkin_stabilizer {
 
     prioritized_acc_inverse_kinematics_solver::IKParam param;
     param.debugLevel = this->debugLevel;
+    // param.debugLevel = 2;
     param.ddqWeight = 1e-6;
     param.forceWeight = 1e-12;
     bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
@@ -431,7 +443,11 @@ namespace actkin_stabilizer {
     state.robot->rootLink()->dv()[2] += state.g; // 重力補償
     state.robot->calcForwardKinematics(true,true);
     state.robot->calcCenterOfMass();
-    cnoid::calcInverseDynamics(state.robot->rootLink());
+    cnoid::Vector6 f = cnoid::calcInverseDynamics(state.robot->rootLink());
+    if(this->debugLevel >= 2){
+      f.tail<3>() += (-state.robot->centerOfMass()).cross(f.head<3>());
+      std::cerr << "totalF" << f.transpose() << std::endl;
+    }
     for(int i=0;i<activeNextContacts.size();i++){
       for(int l=0;l<2;l++){
         cnoid::LinkPtr link;
@@ -463,6 +479,13 @@ namespace actkin_stabilizer {
         state.robot->joint(i)->u() = 0.0;
       }
     }
+
+    if(this->debugLevel >= 2){
+      cnoid::VectorX u = cnoid::VectorX(state.robot->numJoints());
+      for(int i=0;i<state.robot->numJoints();i++) u[i] = state.robot->joint(i)->u();
+      std::cerr << "tau" << std::endl << u.transpose() << std::endl;
+    }
+
     return true;
   }
 
