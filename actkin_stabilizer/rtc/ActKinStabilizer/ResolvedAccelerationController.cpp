@@ -430,7 +430,7 @@ namespace actkin_stabilizer {
     prioritized_acc_inverse_kinematics_solver::IKParam param;
     param.debugLevel = this->debugLevel;
     //param.debugLevel = 2;
-    param.ddqWeight = 1e-6;
+    param.ddqWeight = 1e-3; //1e-6がdefault. 1e-3以上にしないとIKが解けないときに発散
     param.forceWeight = 1e-12;
     bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
                                                                       forces,
