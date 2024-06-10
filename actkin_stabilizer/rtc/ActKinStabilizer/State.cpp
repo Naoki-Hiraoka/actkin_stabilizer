@@ -34,9 +34,9 @@ namespace actkin_stabilizer {
       constraint->jointLimitTables() = this->jointLimitTables[i];
       constraint->pgain() = 400;
       constraint->dgain() = 50;
-      constraint->maxAcc() = 15.0;
-      constraint->maxAccByPosError() = 5.0;
-      constraint->maxAccByVelError() = 20.0;
+      constraint->maxAcc() = 1e5; // 常に満たす不等式制約なので1e5でよい. 逆に常にチェックしてくれないと困る
+      constraint->maxAccByPosError() = 1e5;
+      constraint->maxAccByVelError() = 1e5;
       constraint->weight() = 1.0;
       this->jointLimitConstraints[i] = constraint;
     }

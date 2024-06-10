@@ -75,8 +75,9 @@ namespace actkin_stabilizer {
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > jointLimitConstraints;
     // 接触力制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > forceConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > forceReductionConstraints;
     this->calcVariables(state, activeNextContacts, instance_name,
-                        joints, forces, jointLimitConstraints, forceConstraints);
+                        joints, forces, jointLimitConstraints, forceConstraints, forceReductionConstraints);
 
     // 力の釣り合い制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eomConstraints;
@@ -122,20 +123,22 @@ namespace actkin_stabilizer {
                                jointAngleConstraints, angularMomentumConstraints);
 
     // QPを解いて、ddqとFに入れる.
-    bool solved2 = this->calcRAC(jointLimitConstraints,
-                                forceConstraints,
-                                eomConstraints,
-                                penetrationConstraints,
-                                keepContactConstraints,
-                                collisionAvoidanceConstraints,
-                                comConstraints,
-                                eefHighConstraints,
-                                eefLowConstraints,
-                                jointAngleConstraints,
-                                angularMomentumConstraints,
-                                instance_name,
-                                joints,
-                                forces);
+    bool solved2 = this->calcRAC(state,
+                                 jointLimitConstraints,
+                                 forceConstraints,
+                                 forceReductionConstraints,
+                                 eomConstraints,
+                                 penetrationConstraints,
+                                 keepContactConstraints,
+                                 collisionAvoidanceConstraints,
+                                 comConstraints,
+                                 eefHighConstraints,
+                                 eefLowConstraints,
+                                 jointAngleConstraints,
+                                 angularMomentumConstraints,
+                                 instance_name,
+                                 joints,
+                                 forces);
     if(!solved2){
       for(int i=0;i<state.robot->numJoints();i++){
         state.robot->joint(i)->u() = 0.0;
@@ -200,7 +203,8 @@ namespace actkin_stabilizer {
                                                      std::vector<cnoid::LinkPtr>& joints,
                                                      std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
                                                      std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointLimitConstraints,
-                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints) const{
+                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints) const{
     joints.clear();
     jointLimitConstraints.clear();
 
@@ -217,6 +221,7 @@ namespace actkin_stabilizer {
     for(int i = 0; i < activeNextContacts.size(); i++){
       forces.push_back(activeNextContacts[i]->force);
       forceConstraints.push_back(activeNextContacts[i]->forceConstraint);
+      forceReductionConstraints.push_back(activeNextContacts[i]->forceReductionConstraint);
 
       //activeNextContacts[i]->forceConstraint->debugLevel() = 2;
     }
@@ -424,8 +429,10 @@ namespace actkin_stabilizer {
     return true;
   }
 
-  bool ResolvedAccelerationController::calcRAC(const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+  bool ResolvedAccelerationController::calcRAC(const State& state,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
@@ -439,68 +446,120 @@ namespace actkin_stabilizer {
                                                const std::vector<cnoid::LinkPtr>& joints,
                                                const std::vector<std::shared_ptr<aik_constraint::Force> >& forces) const{
 
-    std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
+    {
+      std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
 
-    {
-      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-      constraints_.insert(constraints_.end(), jointAngleLimitConstraints.begin(), jointAngleLimitConstraints.end());
-      constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
-      constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
-      constraints.push_back(constraints_);
-    }
-    {
-      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-      constraints_.insert(constraints_.end(), keepContactConstraints.begin(), keepContactConstraints.end());
-      constraints_.insert(constraints_.end(), penetrationConstraints.begin(), penetrationConstraints.end());
-      constraints.push_back(constraints_);
-    }
-    {
-      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-      constraints_.insert(constraints_.end(), collisionAvoidanceConstraints.begin(), collisionAvoidanceConstraints.end());
-      constraints.push_back(constraints_);
-    }
-    {
-      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-      constraints_.insert(constraints_.end(), comConstraints.begin(), comConstraints.end());
-      constraints_.insert(constraints_.end(), eefHighConstraints.begin(), eefHighConstraints.end());
-      constraints.push_back(constraints_);
-    }
-    {
-      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-      constraints_.insert(constraints_.end(), eefLowConstraints.begin(), eefLowConstraints.end());
-      constraints.push_back(constraints_);
-    }
-    {
-      std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-      constraints_.insert(constraints_.end(), jointAngleConstraints.begin(), jointAngleConstraints.end());
-      constraints_.insert(constraints_.end(), angularMomentumConstraints.begin(), angularMomentumConstraints.end());
-      constraints.push_back(constraints_);
-    }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), jointAngleLimitConstraints.begin(), jointAngleLimitConstraints.end());
+        constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
+        constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), keepContactConstraints.begin(), keepContactConstraints.end());
+        constraints_.insert(constraints_.end(), penetrationConstraints.begin(), penetrationConstraints.end());
+        constraints_.insert(constraints_.end(), collisionAvoidanceConstraints.begin(), collisionAvoidanceConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), comConstraints.begin(), comConstraints.end());
+        constraints_.insert(constraints_.end(), eefHighConstraints.begin(), eefHighConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), eefLowConstraints.begin(), eefLowConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), jointAngleConstraints.begin(), jointAngleConstraints.end());
+        constraints_.insert(constraints_.end(), angularMomentumConstraints.begin(), angularMomentumConstraints.end());
+        constraints.push_back(constraints_);
+      }
 
-    for(int i=0;i<forces.size();i++){
-      forces[i]->F().setZero(); // forceWeightでのノルム最小化のみで分配するため.
-    }
+      for(int i=0;i<forces.size();i++){
+        forces[i]->F().setZero(); // この方が安定する
+      }
 
-    for(int i=0;i<constraints.size();i++){
-      for(int j=0;j<constraints[i].size();j++){
-        constraints[i][j]->debugLevel() = this->debugLevel;
+      for(int i=0;i<constraints.size();i++){
+        for(int j=0;j<constraints[i].size();j++){
+          constraints[i][j]->debugLevel() = this->debugLevel;
+        }
+      }
+
+      prioritized_acc_inverse_kinematics_solver::IKParam param;
+      param.debugLevel = this->debugLevel;
+      //param.debugLevel = 2;
+      param.ddqWeight = 1e-2; //1e-6がdefault. 1e-3以上にしないとIKが解けないときに発散
+      param.forceWeight = 1e-12;
+      bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
+                                                                        forces,
+                                                                        constraints,
+                                                                        this->prevTasks,
+                                                                        param);
+      if(!solved){
+        std::cerr << "[" << instance_name << "] !solved" << std::endl;
+        return false;
       }
     }
 
-    prioritized_acc_inverse_kinematics_solver::IKParam param;
-    param.debugLevel = this->debugLevel;
-    //param.debugLevel = 2;
-    param.ddqWeight = 1e-3; //1e-6がdefault. 1e-3以上にしないとIKが解けないときに発散
-    param.forceWeight = 1e-12;
-    bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
-                                                                      forces,
-                                                                      constraints,
-                                                                      this->prevTasks,
-                                                                      param);
-    if(!solved){
-      std::cerr << "[" << instance_name << "] !solved" << std::endl;
+    {
+      // 関節角度と同じQPでforceの大きさを目的関数とする最適化をすると次元の違いからか不安定になるので、別のIKでやる.
+      state.robot->calcForwardKinematics(true,true);
+      state.robot->calcCenterOfMass();
+      cnoid::Vector6 F_o = cnoid::calcInverseDynamics(state.robot->rootLink()); // world frame origin
+      state.robot->rootLink()->F_ext().head<3>() = F_o.head<3>(); // rootLink origin
+      state.robot->rootLink()->F_ext().tail<3>() = F_o.tail<3>() + (-state.robot->rootLink()->p()).cross(F_o.head<3>()); // rootLink origin
+
+      std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
+
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        // softにした方が安定する
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), forceReductionConstraints.begin(), forceReductionConstraints.end());
+        constraints.push_back(constraints_);
+      }
+
+      for(int i=0;i<forces.size();i++){
+        forces[i]->F().setZero(); // この方が安定する
+      }
+
+      for(int i=0;i<constraints.size();i++){
+        for(int j=0;j<constraints[i].size();j++){
+          constraints[i][j]->debugLevel() = this->debugLevel;
+        }
+      }
+
+      prioritized_acc_inverse_kinematics_solver::IKParam param;
+      param.debugLevel = this->debugLevel;
+      //param.debugLevel = 2;
+      param.forceWeight = 1e-12;
+      bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
+                                                                        forces,
+                                                                        constraints,
+                                                                        this->prevTasks_WD,
+                                                                        param);
+      if(!solved){
+        std::cerr << "[" << instance_name << "] Wrench Distribution failed!" << std::endl;
+        return false;
+      }
     }
-    return solved;
+
+    return true;
   }
 
   bool ResolvedAccelerationController::calcTorque(const State& state,

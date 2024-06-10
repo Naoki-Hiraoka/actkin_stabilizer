@@ -32,6 +32,8 @@ namespace actkin_stabilizer {
     // 計算高速化のためのキャッシュ. 初期化しなくてもよい
     mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks_COM;
     mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks;
+    mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks_WD;
+
 
   public:
     bool execResolvedAccelerationController(const State& state, const Goal& goal, const std::string& instance_name, double dt) const;
@@ -49,7 +51,8 @@ namespace actkin_stabilizer {
                        std::vector<cnoid::LinkPtr>& joints,
                        std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
                        std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointLimitConstraints,
-                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints) const;
+                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints) const;
 
     bool calcEOMConstraints(const State& state,
                             const std::string& instance_name,
@@ -89,8 +92,10 @@ namespace actkin_stabilizer {
                               std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
                               std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints) const;
 
-    bool calcRAC(const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
+    bool calcRAC(const State& state,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
