@@ -1,6 +1,3 @@
-add_compile_options(-std=c++14)
-set(CMAKE_BUILD_TYPE Release)
-
 # openrtm has deprecated coding. This causes too many warnings.
 #   warning: dynamic exception specifications are deprecated in C++11
 add_definitions(-Wno-deprecated)
@@ -33,7 +30,6 @@ include_directories(
   ${openrtm_aist_INCLUDE_DIRS}
   )
 link_directories(
-  ${CHOREONOID_LIBRARY_DIRS}
   ${openrtm_aist_LIBRARY_DIRS}
   )
 
