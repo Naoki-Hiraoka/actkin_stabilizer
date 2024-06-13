@@ -55,6 +55,9 @@ module actkin_stabilizer_msgs
     sequence<double> wrenchld;
     sequence<double> wrenchud;
     //sequence<double, 6> wrenchw; // localPose1 frame/origin. link1がlink2から受ける力に関する重み.
+
+    // 以下、ActKinStabilizerでは使用しない
+    RTC::Pose3D localpose2; // link2 local. 隣接性判定に用いる
   };
 
   typedef sequence<RefContactIdl> RefContactSequence;
@@ -69,11 +72,21 @@ module actkin_stabilizer_msgs
     sequence<RefqPointIdl> trajectory; // Reference trajectory
   };
 
+  enum FeasibilityIdl {
+    FEASIBLE,
+    UNPREFERABLE,
+    POSTPONED,
+    INFEASIBLE
+  };
+
   struct RefStateIdl {
     RefEESequence refEEPose;
     RefVRPIdl refVRP;
     RefContactSequence refContact;
     RefqIdl refq;
+
+    // 以下、ActKinStabilizerでは使用しない
+    FeasibilityIdl feasibility;
   };
 
 };
