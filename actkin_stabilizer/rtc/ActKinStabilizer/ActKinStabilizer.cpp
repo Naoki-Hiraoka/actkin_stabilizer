@@ -29,7 +29,7 @@ ActKinStabilizer::Ports::Ports() :
   m_actBasePoseIn_("actBasePoseIn", m_actBasePose_),
   m_actBaseVelIn_("actBaseVelIn", m_actBaseVel_),
   m_actContactStateIn_("actContactStateIn", m_actContactState_),
-  m_refStateIn_("refState", m_refState_),
+  m_refStateIn_("refStateIn", m_refState_),
   m_selfCollisionIn_("selfCollisionIn", m_selfCollision_),
 
   m_tauOut_("tauOut", m_tau_),
@@ -56,6 +56,7 @@ void ActKinStabilizer::Ports::onInitialize(ActKinStabilizer* component) {
   component->addInPort("actBasePoseIn", this->m_actBasePoseIn_);
   component->addInPort("actBaseVelIn", this->m_actBaseVelIn_);
   component->addInPort("actContactStateIn", this->m_actContactStateIn_);
+  component->addInPort("refStateIn", this->m_refStateIn_);
   component->addInPort("selfCollisionIn", this->m_selfCollisionIn_);
   component->addOutPort("tauOut", this->m_tauOut_);
 
