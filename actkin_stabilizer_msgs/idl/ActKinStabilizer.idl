@@ -57,7 +57,7 @@ module actkin_stabilizer_msgs
     //sequence<double, 6> wrenchw; // localPose1 frame/origin. link1がlink2から受ける力に関する重み.
 
     // 以下、ActKinStabilizerでは使用しない
-    RTC::Pose3D localpose2; // link2 local. 隣接性判定に用いる
+    RTC::Pose3D localPose2; // link2 local. 隣接性判定に用いる
   };
 
   typedef sequence<RefContactIdl> RefContactSequence;

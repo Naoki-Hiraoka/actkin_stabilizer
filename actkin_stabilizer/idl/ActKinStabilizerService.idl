@@ -6,11 +6,6 @@
 
 module actkin_stabilizer
 {
-  enum EmergencyCheckMode {
-    NO_CHECK,
-    CM
-  };
-
   interface ActKinStabilizerService
   {
     struct ActKinStabilizerParam
