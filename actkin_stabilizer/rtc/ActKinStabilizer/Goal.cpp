@@ -9,10 +9,12 @@ namespace actkin_stabilizer{
   }
 
   void Goal::updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefStateIdl& m_refState){
-    this->updateFromIdl(state, m_refState.refEEPose);
-    this->updateFromIdl(state, m_refState.refVRP);
-    this->updateFromIdl(state, m_refState.refq);
-    this->updateFromIdl(state, m_refState.refContact);
+    if(m_refState.feasibility != actkin_stabilizer_msgs::INFEASIBLE){
+      this->updateFromIdl(state, m_refState.refEEPose);
+      this->updateFromIdl(state, m_refState.refVRP);
+      this->updateFromIdl(state, m_refState.refq);
+      this->updateFromIdl(state, m_refState.refContact);
+    }
   }
 
   void Goal::updateFromIdl(const State& state, const actkin_stabilizer_msgs::RefEESequence& m_refEEPose){
