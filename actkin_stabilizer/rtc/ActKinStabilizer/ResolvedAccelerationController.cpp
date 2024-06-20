@@ -173,7 +173,7 @@ namespace actkin_stabilizer {
       for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++, j++){
         if( ((state.contacts[i]->link1 == it->second->link1) && (state.contacts[i]->link2 == it->second->link2)) ||
             ((state.contacts[i]->link1 == it->second->link2) && (state.contacts[i]->link2 == it->second->link1)) ) {
-          cnoid::Vector3 value = it->second->region.C * (poseInv[j] * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation()));
+          cnoid::VectorX value = it->second->region.C * (poseInv[j] * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation()));
           // TODO 法線方向のチェック
           if( ((value - it->second->region.ld).array() >= 0.0).all() &&
               ((it->second->region.ud - value).array() >= 0.0).all() ){
