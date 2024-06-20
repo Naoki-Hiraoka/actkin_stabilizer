@@ -397,7 +397,7 @@ namespace actkin_stabilizer{
       if(contactGoal->wrenchC.cols() != 6 ||
          contactGoal->wrenchC.rows() != contactGoal->wrenchld.rows() ||
          contactGoal->wrenchC.rows() != contactGoal->wrenchud.rows()){
-        std::cerr << __FUNCTION__ << "region dimension mismatch" << std::endl;
+        std::cerr << __FUNCTION__ << "wrench dimension mismatch" << std::endl;
         continue;
       }
 
