@@ -304,60 +304,60 @@ namespace actkin_stabilizer {
                                                                                 traj);
     cnoid::Vector3 acc = std::pow(goal.vrpGoals[0]->omega, 2) * (state.robot->centerOfMass() - vrp);
 
-    // accを支持領域でlimitする.
+    // accを支持領域でlimitする. 基本的にはこちらの方法を使わないと軸が干渉し不正確
     bool solved = false;
-    // if(acc.norm()!=0){
-    //   cnoid::Vector3 F = acc * state.robot->mass();
-    //   cnoid::Vector3 dir = F.normalized();
-    //   double f = F.norm();
-    //   for(int i=0;i<3;i++) {
-    //     goal.vrpGoals[0]->force->S().coeffRef(i,0) = dir[i];
-    //   }
-    //   goal.vrpGoals[0]->force->A_localpos().translation() = state.robot->centerOfMass();
-    //   goal.vrpGoals[0]->forceConstraint->dl()[0] = f;
-    //   goal.vrpGoals[0]->forceConstraint->du()[0] = f;
+    if(acc.norm()!=0){
+      cnoid::Vector3 F = acc * state.robot->mass();
+      cnoid::Vector3 dir = F.normalized();
+      double f = F.norm();
+      for(int i=0;i<3;i++) {
+        goal.vrpGoals[0]->force->S().coeffRef(i,0) = dir[i];
+      }
+      goal.vrpGoals[0]->force->A_localpos().translation() = state.robot->centerOfMass();
+      goal.vrpGoals[0]->forceConstraint->dl()[0] = f;
+      goal.vrpGoals[0]->forceConstraint->du()[0] = f;
 
-    //   std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
-    //   forces2.push_back(goal.vrpGoals[0]->force);
-    //   forces2.insert(forces2.end(), forces.begin(), forces.end());
+      std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
+      forces2.push_back(goal.vrpGoals[0]->force);
+      forces2.insert(forces2.end(), forces.begin(), forces.end());
 
-    //   std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
+      std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
 
-    //   {
-    //     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-    //     constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
-    //     constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
-    //     constraints.push_back(constraints_);
-    //   }
-    //   {
-    //     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-    //     constraints_.push_back(goal.vrpGoals[0]->forceConstraint);
-    //     constraints.push_back(constraints_);
-    //   }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
+        constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.push_back(goal.vrpGoals[0]->forceConstraint);
+        constraints.push_back(constraints_);
+      }
 
-    //   for(int i=0;i<forces2.size();i++){
-    //     forces2[i]->F().setZero(); // この方が安定する
-    //   }
+      for(int i=0;i<forces2.size();i++){
+        forces2[i]->F().setZero(); // この方が安定する
+      }
 
-    //   for(int i=0;i<constraints.size();i++){
-    //     for(int j=0;j<constraints[i].size();j++){
-    //       constraints[i][j]->debugLevel() = this->debugLevel;
-    //     }
-    //   }
+      for(int i=0;i<constraints.size();i++){
+        for(int j=0;j<constraints[i].size();j++){
+          constraints[i][j]->debugLevel() = this->debugLevel;
+        }
+      }
 
-    //   prioritized_acc_inverse_kinematics_solver::IKParam param;
-    //   param.debugLevel = this->debugLevel;
-    //   //param.debugLevel = 2;
-    //   param.forceWeight = 1e-12;
-    //   solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
-    //                                                                forces2,
-    //                                                                constraints,
-    //                                                                this->prevTasks_COM,
-    //                                                                param);
-    //   if(solved){
-    //     acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F()).head<3>() / state.robot->mass();
-    //   }
-    // }
+      prioritized_acc_inverse_kinematics_solver::IKParam param;
+      param.debugLevel = this->debugLevel;
+      //param.debugLevel = 2;
+      param.forceWeight = 1e-12;
+      solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
+                                                                   forces2,
+                                                                   constraints,
+                                                                   this->prevTasks_COM,
+                                                                   param);
+      if(solved){
+        acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F()).head<3>() / state.robot->mass();
+      }
+    }
 
     // accを支持領域でlimitする.
     if(!solved){

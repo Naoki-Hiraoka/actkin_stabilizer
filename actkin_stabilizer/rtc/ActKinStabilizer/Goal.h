@@ -92,7 +92,7 @@ namespace actkin_stabilizer {
     double Dq = 1.;
 
     double contactDp = 15.0;
-    double contactDr = 10.0;
+    double contactDr = 20.0;
 
   public:
     // RTC起動時に一回呼ばれる.
