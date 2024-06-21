@@ -305,19 +305,73 @@ namespace actkin_stabilizer {
     cnoid::Vector3 acc = std::pow(goal.vrpGoals[0]->omega, 2) * (state.robot->centerOfMass() - vrp);
 
     // accを支持領域でlimitする.
-    if(acc.norm()!=0){
-      cnoid::Vector3 F = acc * state.robot->mass();
-      cnoid::Vector3 dir = F.normalized();
-      double f = F.norm();
-      for(int i=0;i<3;i++) {
-        goal.vrpGoals[0]->force->S().coeffRef(i,0) = dir[i];
+    bool solved = false;
+    // if(acc.norm()!=0){
+    //   cnoid::Vector3 F = acc * state.robot->mass();
+    //   cnoid::Vector3 dir = F.normalized();
+    //   double f = F.norm();
+    //   for(int i=0;i<3;i++) {
+    //     goal.vrpGoals[0]->force->S().coeffRef(i,0) = dir[i];
+    //   }
+    //   goal.vrpGoals[0]->force->A_localpos().translation() = state.robot->centerOfMass();
+    //   goal.vrpGoals[0]->forceConstraint->dl()[0] = f;
+    //   goal.vrpGoals[0]->forceConstraint->du()[0] = f;
+
+    //   std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
+    //   forces2.push_back(goal.vrpGoals[0]->force);
+    //   forces2.insert(forces2.end(), forces.begin(), forces.end());
+
+    //   std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
+
+    //   {
+    //     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+    //     constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
+    //     constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+    //     constraints.push_back(constraints_);
+    //   }
+    //   {
+    //     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+    //     constraints_.push_back(goal.vrpGoals[0]->forceConstraint);
+    //     constraints.push_back(constraints_);
+    //   }
+
+    //   for(int i=0;i<forces2.size();i++){
+    //     forces2[i]->F().setZero(); // この方が安定する
+    //   }
+
+    //   for(int i=0;i<constraints.size();i++){
+    //     for(int j=0;j<constraints[i].size();j++){
+    //       constraints[i][j]->debugLevel() = this->debugLevel;
+    //     }
+    //   }
+
+    //   prioritized_acc_inverse_kinematics_solver::IKParam param;
+    //   param.debugLevel = this->debugLevel;
+    //   //param.debugLevel = 2;
+    //   param.forceWeight = 1e-12;
+    //   solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
+    //                                                                forces2,
+    //                                                                constraints,
+    //                                                                this->prevTasks_COM,
+    //                                                                param);
+    //   if(solved){
+    //     acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F()).head<3>() / state.robot->mass();
+    //   }
+    // }
+
+    // accを支持領域でlimitする.
+    if(!solved){
+      cnoid::Vector3 f = acc * state.robot->mass();
+      goal.vrpGoals[0]->force2->A_localpos().translation() = state.robot->centerOfMass();
+      goal.vrpGoals[0]->force2Constraint1->dl()[0] = f[2];
+      goal.vrpGoals[0]->force2Constraint1->du()[0] = f[2];
+      for(int i=0;i<2;i++){
+        goal.vrpGoals[0]->force2Constraint2->dl()[i] = f[i];
+        goal.vrpGoals[0]->force2Constraint2->du()[i] = f[i];
       }
-      goal.vrpGoals[0]->force->A_localpos().translation() = state.robot->centerOfMass();
-      goal.vrpGoals[0]->forceConstraint->dl()[0] = f;
-      goal.vrpGoals[0]->forceConstraint->du()[0] = f;
 
       std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
-      forces2.push_back(goal.vrpGoals[0]->force);
+      forces2.push_back(goal.vrpGoals[0]->force2);
       forces2.insert(forces2.end(), forces.begin(), forces.end());
 
       std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
@@ -330,7 +384,12 @@ namespace actkin_stabilizer {
       }
       {
         std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-        constraints_.push_back(goal.vrpGoals[0]->forceConstraint);
+        constraints_.push_back(goal.vrpGoals[0]->force2Constraint1);
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.push_back(goal.vrpGoals[0]->force2Constraint2);
         constraints.push_back(constraints_);
       }
 
@@ -348,17 +407,19 @@ namespace actkin_stabilizer {
       param.debugLevel = this->debugLevel;
       //param.debugLevel = 2;
       param.forceWeight = 1e-12;
-      bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
-                                                                        forces2,
-                                                                        constraints,
-                                                                        this->prevTasks_COM,
-                                                                        param);
-      if(!solved){
-        std::cerr << "[" << instance_name << "] COM acceleration cannot be determined!" << std::endl;
-        return false;
+      solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
+                                                                   forces2,
+                                                                   constraints,
+                                                                   this->prevTasks_COM2,
+                                                                   param);
+      if(solved){
+        acc = (goal.vrpGoals[0]->force2->S() * goal.vrpGoals[0]->force2->F()).head<3>() / state.robot->mass();
       }
+    }
 
-      acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F()).head<3>() / state.robot->mass();
+    if(!solved){
+      std::cerr << "[" << instance_name << "] COM acceleration cannot be determined!" << std::endl;
+      return false;
     }
 
     goal.vrpGoals[0]->comConstraint->ref_acc() = acc;
@@ -495,7 +556,7 @@ namespace actkin_stabilizer {
       prioritized_acc_inverse_kinematics_solver::IKParam param;
       param.debugLevel = this->debugLevel;
       //param.debugLevel = 2;
-      param.ddqWeight = 1e-2; //1e-6がdefault. 1e-3以上にしないとIKが解けないときに発散
+      param.ddqWeight = 1e-2; //1e-6がdefault. 1e-2なら特異点でもかなりロバスト. 1e-3以上にしないとIKが解けないときに発散
       param.forceWeight = 1e-12;
       bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
                                                                         forces,

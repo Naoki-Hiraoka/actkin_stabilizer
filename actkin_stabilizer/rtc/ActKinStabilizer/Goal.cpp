@@ -240,6 +240,33 @@ namespace actkin_stabilizer{
         vrpGoal->forceConstraint->C().insert(0,0) = 1.0;
       }
 
+      if(!vrpGoal->force2) {
+        vrpGoal->force2 = std::make_shared<aik_constraint::Force>();
+        vrpGoal->force2->F() = cnoid::VectorX::Zero(3);
+        vrpGoal->force2->S().resize(6,3);
+        for(int j=0;j<3;j++) vrpGoal->force2->S().insert(j,j) = 1.0;
+        vrpGoal->force2->B_link() = state.robot->rootLink();
+      }
+
+      if(!vrpGoal->force2Constraint1){
+        vrpGoal->force2Constraint1 = std::make_shared<aik_constraint::ForceConstraint>();
+        vrpGoal->force2Constraint1->force() = vrpGoal->force2;
+        vrpGoal->force2Constraint1->dl() = cnoid::VectorX::Zero(1);
+        vrpGoal->force2Constraint1->du() = cnoid::VectorX::Zero(1);
+        vrpGoal->force2Constraint1->C().resize(1,3);
+        vrpGoal->force2Constraint1->C().insert(0,2) = 1.0;
+      }
+
+      if(!vrpGoal->force2Constraint2){
+        vrpGoal->force2Constraint2 = std::make_shared<aik_constraint::ForceConstraint>();
+        vrpGoal->force2Constraint2->force() = vrpGoal->force2;
+        vrpGoal->force2Constraint2->dl() = cnoid::VectorX::Zero(2);
+        vrpGoal->force2Constraint2->du() = cnoid::VectorX::Zero(2);
+        vrpGoal->force2Constraint2->C().resize(2,3);
+        vrpGoal->force2Constraint2->C().insert(0,0) = 1.0;
+        vrpGoal->force2Constraint2->C().insert(1,1) = 1.0;
+      }
+
       if(!vrpGoal->angularMomentumConstraint){
         vrpGoal->angularMomentumConstraint = std::make_shared<aik_constraint::AngularMomentumConstraint>();
       }
@@ -440,9 +467,9 @@ namespace actkin_stabilizer{
       contactGoal->positionConstraint->A_link() = contactGoal->link1;
       contactGoal->positionConstraint->A_localpos() = contactGoal->localPose1;
       contactGoal->positionConstraint->B_link() = contactGoal->link2;
-      // 相対加速度0
+      // 相対速度0
       contactGoal->positionConstraint->pgain().setZero();
-      contactGoal->positionConstraint->dgain().setZero();
+      contactGoal->positionConstraint->dgain() << this->contactDp, this->contactDp, this->contactDp, this->contactDr, this->contactDr, this->contactDr;
       contactGoal->positionConstraint->ref_acc().setZero();
 
       nextContactGoals[name] = contactGoal;

@@ -41,6 +41,9 @@ namespace actkin_stabilizer {
     std::shared_ptr<aik_constraint::COMConstraint> comConstraint = nullptr;
     std::shared_ptr<aik_constraint::Force> force = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
+    std::shared_ptr<aik_constraint::Force> force2 = nullptr;
+    std::shared_ptr<aik_constraint::ForceConstraint> force2Constraint1 = nullptr;
+    std::shared_ptr<aik_constraint::ForceConstraint> force2Constraint2 = nullptr;
     std::shared_ptr<aik_constraint::AngularMomentumConstraint> angularMomentumConstraint = nullptr;
   };
 
@@ -87,6 +90,9 @@ namespace actkin_stabilizer {
     double Dr = 20.0;
     double Kq = 1.0;
     double Dq = 1.;
+
+    double contactDp = 15.0;
+    double contactDr = 10.0;
 
   public:
     // RTC起動時に一回呼ばれる.

@@ -31,6 +31,7 @@ namespace actkin_stabilizer {
   protected:
     // 計算高速化のためのキャッシュ. 初期化しなくてもよい
     mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks_COM;
+    mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks_COM2;
     mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks;
     mutable std::vector<std::shared_ptr<prioritized_qp_base::Task> > prevTasks_WD;
 
