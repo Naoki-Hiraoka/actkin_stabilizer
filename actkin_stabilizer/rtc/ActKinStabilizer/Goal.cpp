@@ -252,10 +252,10 @@ namespace actkin_stabilizer{
       if(!vrpGoal->force2Constraint1){
         vrpGoal->force2Constraint1 = std::make_shared<aik_constraint::ForceConstraint>();
         vrpGoal->force2Constraint1->force() = vrpGoal->force2;
-        vrpGoal->force2Constraint1->dl() = cnoid::VectorX::Zero(1);
-        vrpGoal->force2Constraint1->du() = cnoid::VectorX::Zero(1);
-        vrpGoal->force2Constraint1->C().resize(1,3);
-        vrpGoal->force2Constraint1->C().insert(0,2) = 1.0;
+        vrpGoal->force2Constraint1->dl() = cnoid::VectorX::Zero(3);
+        vrpGoal->force2Constraint1->du() = cnoid::VectorX::Zero(3);
+        vrpGoal->force2Constraint1->C().resize(3,3);
+        for(int j=0;j<3;j++) vrpGoal->force2Constraint1->C().insert(j,j) = 1.0;
       }
 
       if(!vrpGoal->force2Constraint2){

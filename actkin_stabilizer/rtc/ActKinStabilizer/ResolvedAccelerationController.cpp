@@ -183,6 +183,15 @@ namespace actkin_stabilizer {
       mathutil::calcConvexHull(points, points);
       std::vector <Eigen::Vector2d> surface = mathutil::calcIntersectConvexHull(points, it->second->surface);
       if(surface.size() > 0){
+        // update WrenchC, wrenchld, wrenchud
+        // 0 <  0  0  1  0  0  0 < 1e10
+        // 0 <  1  0 mt  0  0  0 < 1e10
+        // 0 < -1  0 mt  0  0  0 < 1e10
+        // 0 <  0  1 mt  0  0  0 < 1e10
+        // 0 <  0 -1 mt  0  0  0 < 1e10
+        // 0 <  0  0  d r1 r2  0 < 1e10 ;; x hull.size()
+        // 0 <  0  0 mr  0  0  1 < 1e10
+        // 0 <  0  0 mr  0  0 -1 < 1e10
         int dim = 7 + surface.size();
         it->second->forceConstraint->C() = Eigen::SparseMatrix<double,Eigen::RowMajor>(dim,6);
         it->second->forceConstraint->dl() = Eigen::VectorXd::Zero(dim);
@@ -351,9 +360,11 @@ namespace actkin_stabilizer {
       goal.vrpGoals[0]->force->A_localpos().translation() = state.robot->centerOfMass();
       goal.vrpGoals[0]->forceConstraint->dl()[0] = f;
       goal.vrpGoals[0]->forceConstraint->du()[0] = f;
+      goal.vrpGoals[0]->force2->A_localpos().translation() = state.robot->centerOfMass();
 
       std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
       forces2.push_back(goal.vrpGoals[0]->force);
+      forces2.push_back(goal.vrpGoals[0]->force2);
       forces2.insert(forces2.end(), forces.begin(), forces.end());
 
       std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
@@ -362,6 +373,11 @@ namespace actkin_stabilizer {
         std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
         constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
         constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.push_back(goal.vrpGoals[0]->force2Constraint1);
         constraints.push_back(constraints_);
       }
       {
@@ -390,65 +406,7 @@ namespace actkin_stabilizer {
                                                                    this->prevTasks_COM,
                                                                    param);
       if(solved){
-        acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F()).head<3>() / state.robot->mass();
-      }
-    }
-
-    // accを支持領域でlimitする.
-    if(!solved){
-      cnoid::Vector3 f = acc * state.robot->mass();
-      goal.vrpGoals[0]->force2->A_localpos().translation() = state.robot->centerOfMass();
-      goal.vrpGoals[0]->force2Constraint1->dl()[0] = f[2];
-      goal.vrpGoals[0]->force2Constraint1->du()[0] = f[2];
-      for(int i=0;i<2;i++){
-        goal.vrpGoals[0]->force2Constraint2->dl()[i] = f[i];
-        goal.vrpGoals[0]->force2Constraint2->du()[i] = f[i];
-      }
-
-      std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
-      forces2.push_back(goal.vrpGoals[0]->force2);
-      forces2.insert(forces2.end(), forces.begin(), forces.end());
-
-      std::vector<std::vector<std::shared_ptr<aik_constraint::IKConstraint> > > constraints;
-
-      {
-        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-        constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
-        constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
-        constraints.push_back(constraints_);
-      }
-      {
-        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-        constraints_.push_back(goal.vrpGoals[0]->force2Constraint1);
-        constraints.push_back(constraints_);
-      }
-      {
-        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-        constraints_.push_back(goal.vrpGoals[0]->force2Constraint2);
-        constraints.push_back(constraints_);
-      }
-
-      for(int i=0;i<forces2.size();i++){
-        forces2[i]->F().setZero(); // この方が安定する
-      }
-
-      for(int i=0;i<constraints.size();i++){
-        for(int j=0;j<constraints[i].size();j++){
-          constraints[i][j]->debugLevel() = this->debugLevel;
-        }
-      }
-
-      prioritized_acc_inverse_kinematics_solver::IKParam param;
-      param.debugLevel = this->debugLevel;
-      //param.debugLevel = 2;
-      param.forceWeight = 1e-12;
-      solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
-                                                                   forces2,
-                                                                   constraints,
-                                                                   this->prevTasks_COM2,
-                                                                   param);
-      if(solved){
-        acc = (goal.vrpGoals[0]->force2->S() * goal.vrpGoals[0]->force2->F()).head<3>() / state.robot->mass();
+        acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F() + goal.vrpGoals[0]->force2->S() * goal.vrpGoals[0]->force2->F()).head<3>() / state.robot->mass();
       }
     }
 
