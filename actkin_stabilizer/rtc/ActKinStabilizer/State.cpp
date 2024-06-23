@@ -137,6 +137,7 @@ namespace actkin_stabilizer {
       this->contacts[numContact]->link2 = this->linkNameMap[std::string(m_actContactState.data[i].link2)];
       this->contacts[numContact]->freeX = m_actContactState.data[i].free_x;
       this->contacts[numContact]->freeY = m_actContactState.data[i].free_y;
+      for(int j=0;j<3;j++) this->contacts[numContact]->force[j] = m_actContactState.data[i].force[j];
       numContact++;
     }
     this->contacts.resize(numContact);

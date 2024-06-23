@@ -26,6 +26,7 @@ namespace actkin_stabilizer {
     cnoid::LinkPtr link2;
     bool freeX = false;
     bool freeY = false;
+    cnoid::Vector3 force = cnoid::Vector3::Zero(); //local frame
     //std::shared_ptr<ik_constraint2::PositionConstraint> ikc;
   };
 

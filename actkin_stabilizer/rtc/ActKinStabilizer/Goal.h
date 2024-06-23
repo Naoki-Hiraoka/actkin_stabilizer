@@ -63,14 +63,17 @@ namespace actkin_stabilizer {
     std::vector<bool> freeAxis = std::vector<bool>(6,false); // localPose1 local
     Region3D region; // localPose1 local
 
-    Eigen::SparseMatrix<double,Eigen::RowMajor> wrenchC; // localPose1 frame/origin. link1がlink2から受ける力に関する接触力制約.
-    cnoid::VectorX wrenchld;
-    cnoid::VectorX wrenchud;
+    double muTrans = 0.5; // 0以上
+    double muRot = 0.05; // 0以上
+    double maxFz = 2000.0; // 0以上
+    double minFz = 50.0; // 0以上
+    std::vector<Eigen::Vector2d> surface = std::vector<Eigen::Vector2d>{Eigen::Vector2d(0.05,0.05),Eigen::Vector2d(-0.05,0.05),Eigen::Vector2d(-0.05,-0.05),Eigen::Vector2d(0.05,-0.05)}; // 半時計回り
 
     std::shared_ptr<aik_constraint::Force> force = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceReductionConstraint = nullptr;
     std::shared_ptr<aik_constraint::PositionConstraint> positionConstraint = nullptr;
+
   };
 
   class Goal {
@@ -88,11 +91,13 @@ namespace actkin_stabilizer {
     double Dp = 30.0;
     double Kr = 100.0;
     double Dr = 20.0;
-    double Kq = 1.0;
-    double Dq = 1.;
+    double Kq = 10.0;
+    double Dq = 10.0;
 
     double contactDp = 15.0;
     double contactDr = 20.0;
+
+    double contactMargin = 0.05;
 
   public:
     // RTC起動時に一回呼ばれる.

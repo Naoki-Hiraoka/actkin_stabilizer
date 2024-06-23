@@ -161,23 +161,65 @@ namespace actkin_stabilizer {
     allNextContacts.clear();
     redundantContacts.clear();
 
-    std::vector<bool> use(goal.contactGoals.size(),false);
-    std::vector<cnoid::Isometry3> poseInv;
     for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++){
-      poseInv.push_back((it->second->link1 ? it->second->link1->T() * it->second->localPose1 : it->second->localPose1).inverse());
-    }
-
-    for(int i=0;i<state.contacts.size();i++){
-      int j = 0;
-      bool redundant = true;
-      for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++, j++){
+      cnoid::Isometry3 poseInv = ((it->second->link1 ? it->second->link1->T() * it->second->localPose1 : it->second->localPose1).inverse());
+      std::vector<Eigen::Vector2d> points; // refContact local
+      for(int i=0;i<state.contacts.size();i++){
         if( ((state.contacts[i]->link1 == it->second->link1) && (state.contacts[i]->link2 == it->second->link2)) ||
             ((state.contacts[i]->link1 == it->second->link2) && (state.contacts[i]->link2 == it->second->link1)) ) {
-          cnoid::VectorX value = it->second->region.C * (poseInv[j] * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation()));
+          cnoid::Vector3 p = (poseInv * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation())); // refContact local
+          cnoid::VectorX value = it->second->region.C * p;
           // TODO 法線方向のチェック
           if( ((value - it->second->region.ld).array() >= 0.0).all() &&
               ((it->second->region.ud - value).array() >= 0.0).all() ){
-            use[j] = true;
+            points.push_back(p.head<2>() + Eigen::Vector2d(goal.contactMargin,goal.contactMargin));
+            points.push_back(p.head<2>() + Eigen::Vector2d(-goal.contactMargin,goal.contactMargin));
+            points.push_back(p.head<2>() + Eigen::Vector2d(-goal.contactMargin,-goal.contactMargin));
+            points.push_back(p.head<2>() + Eigen::Vector2d(goal.contactMargin,-goal.contactMargin));
+          }
+        }
+      }
+
+      mathutil::calcConvexHull(points, points);
+      std::vector <Eigen::Vector2d> surface = mathutil::calcIntersectConvexHull(points, it->second->surface);
+      if(surface.size() > 0){
+        int dim = 7 + surface.size();
+        it->second->forceConstraint->C() = Eigen::SparseMatrix<double,Eigen::RowMajor>(dim,6);
+        it->second->forceConstraint->dl() = Eigen::VectorXd::Zero(dim);
+        it->second->forceConstraint->du() = 1e10 * Eigen::VectorXd::Ones(dim);
+        int idx=0;
+        it->second->forceConstraint->C().insert(idx,2) = 1.0; it->second->forceConstraint->dl()[idx] = it->second->minFz; it->second->forceConstraint->du()[idx] = it->second->maxFz; idx++;
+        it->second->forceConstraint->C().insert(idx,0) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+        it->second->forceConstraint->C().insert(idx,0) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+        it->second->forceConstraint->C().insert(idx,1) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+        it->second->forceConstraint->C().insert(idx,1) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+        for(int j=0;j<surface.size();j++){
+          Eigen::Vector2d v1 = surface[j]; // EEF frame/origin
+          Eigen::Vector2d v2 = surface[(j+1<surface.size())?j+1:0]; // EEF frame/origin
+          if(v1.head<2>() == v2.head<2>()) continue;
+          Eigen::Vector2d r = Eigen::Vector2d(v2[1]-v1[1],v1[0]-v2[0]).normalized();
+          double d = r.dot(v1);
+          it->second->forceConstraint->C().insert(idx,2) = d; it->second->forceConstraint->C().insert(idx,3) = -r[1]; it->second->forceConstraint->C().insert(idx,4) = r[0]; idx++;
+        }
+        it->second->forceConstraint->C().insert(idx,5) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
+        it->second->forceConstraint->C().insert(idx,5) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
+
+        allNextContacts.push_back(it->second);
+
+      }
+
+    }
+
+    for(int i=0;i<state.contacts.size();i++){
+      bool redundant;
+      for(int j=0;j<allNextContacts.size();j++){
+        cnoid::Isometry3 poseInv = ((allNextContacts[j]->link1 ? allNextContacts[j]->link1->T() * allNextContacts[j]->localPose1 : allNextContacts[j]->localPose1).inverse());
+        if( ((state.contacts[i]->link1 == allNextContacts[j]->link1) && (state.contacts[i]->link2 == allNextContacts[j]->link2)) ||
+            ((state.contacts[i]->link1 == allNextContacts[j]->link2) && (state.contacts[i]->link2 == allNextContacts[j]->link1)) ) {
+          cnoid::VectorX value = allNextContacts[j]->region.C * (poseInv * (state.contacts[i]->link1 ? state.contacts[i]->link1->T() * state.contacts[i]->localPose1.translation() : state.contacts[i]->localPose1.translation()));
+          // TODO 法線方向のチェック
+          if( ((value - allNextContacts[j]->region.ld).array() >= 0.0).all() &&
+              ((allNextContacts[j]->region.ud - value).array() >= 0.0).all() ){
             redundant = false;
             break;
           }
@@ -185,13 +227,6 @@ namespace actkin_stabilizer {
       }
       if(redundant){
         redundantContacts.push_back(state.contacts[i]);
-      }
-    }
-
-    {
-      int j = 0;
-      for(std::unordered_map<std::string, std::shared_ptr<RefContact> >::const_iterator it = goal.contactGoals.begin(); it != goal.contactGoals.end(); it++, j++){
-        if(use[j]) allNextContacts.push_back(it->second);
       }
     }
 

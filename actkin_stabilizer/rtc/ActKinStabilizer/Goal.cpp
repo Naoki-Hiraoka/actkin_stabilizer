@@ -1,4 +1,5 @@
 #include "Goal.h"
+#include "MathUtil.h"
 #include <unordered_set>
 #include <eigen_rtm_conversions/eigen_rtm_conversions.h>
 #include <rtm_data_tools/rtm_data_tools.h>
@@ -405,7 +406,6 @@ namespace actkin_stabilizer{
       eigen_rtm_conversions::matrixRTMToEigen(m_refContact[i].region.C, contactGoal->region.C);
       eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].region.ld, contactGoal->region.ld);
       eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].region.ud, contactGoal->region.ud);
-
       if(contactGoal->region.C.cols() != 3 ||
          contactGoal->region.C.rows() != contactGoal->region.ld.rows() ||
          contactGoal->region.C.rows() != contactGoal->region.ud.rows()){
@@ -413,21 +413,46 @@ namespace actkin_stabilizer{
         continue;
       }
 
-      if(!rtm_data_tools::isAllFinite(m_refContact[i].wrenchC) ||
-         !rtm_data_tools::isAllFinite(m_refContact[i].wrenchld) ||
-         !rtm_data_tools::isAllFinite(m_refContact[i].wrenchud)){
-        std::cerr << __FUNCTION__ << "wrench not finite" << std::endl;
+      if(std::isfinite(m_refContact[i].muTrans)){
+        contactGoal->muTrans = std::max(0.0, m_refContact[i].muTrans);
+      }else{
+        std::cerr << __FUNCTION__ << "muTrans not finite" << std::endl;
         continue;
       }
-      eigen_rtm_conversions::matrixRTMToEigen(m_refContact[i].wrenchC, contactGoal->wrenchC);
-      eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].wrenchld, contactGoal->wrenchld);
-      eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].wrenchud, contactGoal->wrenchud);
-
-      if(contactGoal->wrenchC.cols() != 6 ||
-         contactGoal->wrenchC.rows() != contactGoal->wrenchld.rows() ||
-         contactGoal->wrenchC.rows() != contactGoal->wrenchud.rows()){
-        std::cerr << __FUNCTION__ << "wrench dimension mismatch" << std::endl;
+      if(std::isfinite(m_refContact[i].muRot)){
+        contactGoal->muRot = std::max(0.0, m_refContact[i].muRot);
+      }else{
+        std::cerr << __FUNCTION__ << "muRot not finite" << std::endl;
         continue;
+      }
+      if(std::isfinite(m_refContact[i].maxFz)){
+        contactGoal->maxFz = std::max(0.0, m_refContact[i].maxFz);
+      }else{
+        std::cerr << __FUNCTION__ << "maxFz not finite" << std::endl;
+        continue;
+      }
+      if(std::isfinite(m_refContact[i].minFz)){
+        contactGoal->minFz = std::max(0.0, m_refContact[i].minFz);
+      }else{
+        std::cerr << __FUNCTION__ << "minFz not finite" << std::endl;
+        continue;
+      }
+      {
+        std::vector<Eigen::Vector2d> surface(m_refContact[i].surface.length());
+        for(int j=0; j<m_refContact[i].surface.length();j++){
+          if(rtm_data_tools::isAllFinite(m_refContact[i].surface[j])){
+            eigen_rtm_conversions::vectorRTMToEigen(m_refContact[i].surface[j], surface[j]);
+          }else{
+            std::cerr << __FUNCTION__ << "surface not finite" << std::endl;
+            surface.clear();
+            break;
+          }
+        }
+        mathutil::calcConvexHull(surface,contactGoal->surface);
+        if(surface.size() == 0) {
+          std::cerr << __FUNCTION__ << "surface is empty" << std::endl;
+          continue;
+        }
       }
 
       if(!contactGoal->force ||
@@ -444,9 +469,9 @@ namespace actkin_stabilizer{
         contactGoal->forceConstraint = std::make_shared<aik_constraint::ForceConstraint>();
       }
       contactGoal->forceConstraint->force() = contactGoal->force;
-      contactGoal->forceConstraint->dl() = contactGoal->wrenchld;
-      contactGoal->forceConstraint->du() = contactGoal->wrenchud;
-      contactGoal->forceConstraint->C() = contactGoal->wrenchC;
+      contactGoal->forceConstraint->dl().resize(0);
+      contactGoal->forceConstraint->du().resize(0);
+      contactGoal->forceConstraint->C().resize(0,6);
 
       if(!contactGoal->forceReductionConstraint){
         contactGoal->forceReductionConstraint = std::make_shared<aik_constraint::ForceConstraint>();
@@ -470,6 +495,7 @@ namespace actkin_stabilizer{
       // 相対速度0
       contactGoal->positionConstraint->pgain().setZero();
       contactGoal->positionConstraint->dgain() << this->contactDp, this->contactDp, this->contactDp, this->contactDr, this->contactDr, this->contactDr;
+      //contactGoal->positionConstraint->dgain().setZero();
       contactGoal->positionConstraint->ref_acc().setZero();
 
       nextContactGoals[name] = contactGoal;

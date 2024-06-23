@@ -51,9 +51,11 @@ module actkin_stabilizer_msgs
 
     sequence<boolean, 6> freeAxis; // localPose1 local/origin. 動かせない&接触力が発生する軸のみfalse
     Region3D region; // localPose1 local
-    sequence<sequence<double, 6> > wrenchC; // localPose1 local. link1がlink2から受ける力に関する接触力制約.
-    sequence<double> wrenchld;
-    sequence<double> wrenchud;
+    double muTrans; // localPose1 local. link1がlink2から受ける力に関する接触力制約.
+    double muRot; // 同上.
+    double maxFz; // 同上.
+    double minFz; // 同上.
+    sequence<sequence<double, 2> > surface; // 同上.
     //sequence<double, 6> wrenchw; // localPose1 frame/origin. link1がlink2から受ける力に関する重み.
 
     // 以下、ActKinStabilizerでは使用しない
