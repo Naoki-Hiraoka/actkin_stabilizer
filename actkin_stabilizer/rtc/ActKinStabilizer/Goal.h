@@ -67,7 +67,7 @@ namespace actkin_stabilizer {
     double muRot = 0.05; // 0以上
     double maxFz = 2000.0; // 0以上
     double minFz = 50.0; // 0以上
-    std::vector<Eigen::Vector2d> surface = std::vector<Eigen::Vector2d>{Eigen::Vector2d(0.05,0.05),Eigen::Vector2d(-0.05,0.05),Eigen::Vector2d(-0.05,-0.05),Eigen::Vector2d(0.05,-0.05)}; // 半時計回り
+    std::vector<Eigen::Vector2d> surface = std::vector<Eigen::Vector2d>{Eigen::Vector2d(0.05,0.05),Eigen::Vector2d(-0.05,0.05),Eigen::Vector2d(-0.05,-0.05),Eigen::Vector2d(0.05,-0.05)}; // 半時計回り. 面積が0でない
 
     std::shared_ptr<aik_constraint::Force> force = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
@@ -86,7 +86,7 @@ namespace actkin_stabilizer {
 
   public:
     // parameter
-    double minHorizonTime = 0.6;
+    double minHorizonTime = 0.3;
     double Kp = 200.0;
     double Dp = 30.0;
     double Kr = 100.0;
@@ -94,10 +94,10 @@ namespace actkin_stabilizer {
     double Kq = 10.0;
     double Dq = 10.0;
 
-    double contactDp = 15.0;
-    double contactDr = 20.0;
+    double contactDp = 1.0; // rootのvelフィルタのため支持脚は速度を持つので、15だと悪さをする
+    double contactDr = 25.0; // 30.0だと斜面で縁が接触したときに面接触に移行しない. 15だとバタつく
 
-    double contactMargin = 0.05;
+    double contactMargin = 0.02;
 
   public:
     // RTC起動時に一回呼ばれる.

@@ -182,7 +182,7 @@ namespace actkin_stabilizer {
 
       mathutil::calcConvexHull(points, points);
       std::vector <Eigen::Vector2d> surface = mathutil::calcIntersectConvexHull(points, it->second->surface);
-      if(surface.size() > 0){
+      if(surface.size() >= 3){
         // update WrenchC, wrenchld, wrenchud
         // 0 <  0  0  1  0  0  0 < 1e10
         // 0 <  1  0 mt  0  0  0 < 1e10
@@ -192,7 +192,12 @@ namespace actkin_stabilizer {
         // 0 <  0  0  d r1 r2  0 < 1e10 ;; x hull.size()
         // 0 <  0  0 mr  0  0  1 < 1e10
         // 0 <  0  0 mr  0  0 -1 < 1e10
-        int dim = 7 + surface.size();
+        int dim;
+        if(surface.size() == 1){
+          dim = 7 + 2;
+        }else{
+          dim = 7 + surface.size();
+        }
         it->second->forceConstraint->C() = Eigen::SparseMatrix<double,Eigen::RowMajor>(dim,6);
         it->second->forceConstraint->dl() = Eigen::VectorXd::Zero(dim);
         it->second->forceConstraint->du() = 1e10 * Eigen::VectorXd::Ones(dim);
@@ -282,7 +287,7 @@ namespace actkin_stabilizer {
     eomConstraints.clear();
     eomConstraints.push_back(state.eomConstraint);
 
-    //state.eomConstraint->debugLevel() = 2;
+    state.eomConstraint->debugLevel() = 2;
     return true;
   }
 
@@ -407,6 +412,10 @@ namespace actkin_stabilizer {
                                                                    param);
       if(solved){
         acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F() + goal.vrpGoals[0]->force2->S() * goal.vrpGoals[0]->force2->F()).head<3>() / state.robot->mass();
+
+        if(true || this->debugLevel >= 2){
+          std::cerr << "refF" << (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F() + goal.vrpGoals[0]->force2->S() * goal.vrpGoals[0]->force2->F()).head<3>().transpose() << std::endl;
+        }
       }
     }
 
@@ -542,7 +551,7 @@ namespace actkin_stabilizer {
 
       for(int i=0;i<constraints.size();i++){
         for(int j=0;j<constraints[i].size();j++){
-          constraints[i][j]->debugLevel() = this->debugLevel;
+          //constraints[i][j]->debugLevel() = this->debugLevel;
         }
       }
 
@@ -566,6 +575,9 @@ namespace actkin_stabilizer {
       // 関節角度と同じQPでforceの大きさを目的関数とする最適化をすると次元の違いからか不安定になるので、別のIKでやる.
       state.robot->calcForwardKinematics(true,true);
       state.robot->calcCenterOfMass();
+      for(int i=0;i<state.robot->numLinks();i++) {
+        state.robot->link(i)->F_ext().setZero();
+      }
       cnoid::Vector6 F_o = cnoid::calcInverseDynamics(state.robot->rootLink()); // world frame origin
       state.robot->rootLink()->F_ext().head<3>() = F_o.head<3>(); // rootLink origin
       state.robot->rootLink()->F_ext().tail<3>() = F_o.tail<3>() + (-state.robot->rootLink()->p()).cross(F_o.head<3>()); // rootLink origin
@@ -621,13 +633,17 @@ namespace actkin_stabilizer {
                                                   const std::vector<std::shared_ptr<RefContact> >& activeNextContacts,
                                                   const std::string& instance_name) const{
     state.robot->rootLink()->dv()[2] += state.g; // 重力補償
+    for(int i=0;i<state.robot->numLinks();i++) {
+      state.robot->link(i)->F_ext().setZero();
+    }
     state.robot->calcForwardKinematics(true,true);
     state.robot->calcCenterOfMass();
     cnoid::Vector6 f = cnoid::calcInverseDynamics(state.robot->rootLink());
-    if(this->debugLevel >= 2){
+    if(true || this->debugLevel >= 2){
       f.tail<3>() += (-state.robot->centerOfMass()).cross(f.head<3>());
       std::cerr << "totalF" << f.transpose() << std::endl;
     }
+    f.setZero();
     for(int i=0;i<activeNextContacts.size();i++){
       for(int l=0;l<2;l++){
         cnoid::LinkPtr link;
@@ -647,8 +663,15 @@ namespace actkin_stabilizer {
         for(int j=0;j<jointPath.numJoints();j++){
           jointPath.joint(j)->u() += tau[j];
         }
+
+        f.head<3>()+=forceW.head<3>();
       }
     }
+
+    if(true || this->debugLevel >= 2){
+      std::cerr << "sumF" << f.transpose() << std::endl;
+    }
+
 
     for(int i=0;i<state.robot->numJoints();i++){
       if(state.jointControllable[i]){
