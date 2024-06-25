@@ -32,8 +32,9 @@ namespace actkin_stabilizer {
       std::shared_ptr<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint> constraint = std::make_shared<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint>();
       constraint->joint() = this->robot->joint(i);
       constraint->jointLimitTables() = this->jointLimitTables[i];
-      constraint->pgain() = 400;
-      constraint->dgain() = 50;
+      // 動歩行時の股関節や足首では、関節角度上下限直前で急減速する動作がある. これをlimit内判定するために、pgain/dgainを大きくせよ. 
+      constraint->pgain() = 800;
+      constraint->dgain() = 60;
       constraint->maxAcc() = 1e5; // 常に満たす不等式制約なので1e5でよい. 逆に常にチェックしてくれないと困る
       constraint->maxAccByPosError() = 1e5;
       constraint->maxAccByVelError() = 1e5;
