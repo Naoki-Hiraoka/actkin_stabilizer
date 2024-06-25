@@ -6,6 +6,7 @@
 #include <cnoid/EigenUtil>
 #include "MathUtil.h"
 #include "CnoidBodyUtil.h"
+#include <rtm_data_tools/rtm_data_tools.h>
 #include <limits>
 #include <eigen_rtm_conversions/eigen_rtm_conversions.h>
 
@@ -123,6 +124,7 @@ RTC::ReturnCode_t ActKinStabilizer::onInitialize(){
     }
 
     this->state_.init(robot, jointLimitTables);
+    this->goal_.init(this->state_);
 
 
   }
@@ -274,12 +276,18 @@ bool ActKinStabilizer::stopStabilizer(void){
 bool ActKinStabilizer::setActKinStabilizerParam(const actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param){
   std::lock_guard<std::mutex> guard(this->mutex_);
 
+  if(i_param.dqWeight.length() == this->state_.robot->numJoints() &&
+     rtm_data_tools::isAllFinite(i_param.dqWeight)){
+    eigen_rtm_conversions::vectorRTMToEigen(i_param.dqWeight, this->goal_.dqWeight);
+  }
+
   // TODO
   return true;
 }
 bool ActKinStabilizer::getActKinStabilizerParam(actkin_stabilizer::ActKinStabilizerService::ActKinStabilizerParam& i_param) {
   std::lock_guard<std::mutex> guard(this->mutex_);
 
+  eigen_rtm_conversions::vectorEigenToRTM(this->goal_.dqWeight, i_param.dqWeight);
   // TODO
   return true;
 }

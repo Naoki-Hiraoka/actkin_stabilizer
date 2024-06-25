@@ -49,6 +49,7 @@ module actkin_stabilizer
       // 関節角度の重み. IKで動かしたくない関節は大きくする. 全く動かしたくないなら、controllableJointsを使うこと. 0以上. default 1.0
       double wq;
 
+      sequence<double> dqWeight;
     };
 
     boolean startStabilizer();

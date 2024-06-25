@@ -243,8 +243,6 @@ namespace actkin_stabilizer {
       }
     }
 
-    std::cerr << allNextContacts.size() << std::endl;
-
     if(allNextContacts.size() == 0){
       std::cerr << "[" << instance_name << "] no contact found" << std::endl;
     }
@@ -487,6 +485,7 @@ namespace actkin_stabilizer {
           goal.qGoals[0]->jointAngleConstraints[i]->targetq() = q[i];
           goal.qGoals[0]->jointAngleConstraints[i]->targetdq() = dq[i];
           goal.qGoals[0]->jointAngleConstraints[i]->ref_acc() = ddq[i];
+          goal.qGoals[0]->jointAngleConstraints[i]->weight() = goal.dqWeight[i];
           jointAngleConstraints.push_back(goal.qGoals[0]->jointAngleConstraints[i]);
         }
       }

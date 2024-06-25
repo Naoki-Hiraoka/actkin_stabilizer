@@ -6,6 +6,7 @@
 
 namespace actkin_stabilizer{
   void Goal::init(const State& state){
+    this->dqWeight = cnoid::VectorX::Ones(state.robot->numJoints());
     return;
   }
 
@@ -478,9 +479,9 @@ namespace actkin_stabilizer{
         contactGoal->forceReductionConstraint = std::make_shared<aik_constraint::ForceConstraint>();
       }
       contactGoal->forceReductionConstraint->force() = contactGoal->force;
-      contactGoal->forceReductionConstraint->dl() = Eigen::VectorXd::Zero(5) * this->forceRatio;
+      contactGoal->forceReductionConstraint->dl() = Eigen::VectorXd::Zero(5);
       contactGoal->forceReductionConstraint->C().resize(5,6);
-      contactGoal->forceReductionConstraint->du() = Eigen::VectorXd::Zero(5) * this->forceRatio;
+      contactGoal->forceReductionConstraint->du() = Eigen::VectorXd::Zero(5);
       contactGoal->forceReductionConstraint->C().insert(0,0) = 1e0;
       contactGoal->forceReductionConstraint->C().insert(1,1) = 1e0;
       contactGoal->forceReductionConstraint->C().insert(2,3) = 1e0;
