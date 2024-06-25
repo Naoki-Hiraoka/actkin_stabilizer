@@ -475,6 +475,14 @@ namespace actkin_stabilizer{
       contactGoal->forceConstraint->du().resize(0);
       contactGoal->forceConstraint->C().resize(0,6);
 
+      if(!contactGoal->forceConstraint2){
+        contactGoal->forceConstraint2 = std::make_shared<aik_constraint::ForceConstraint>();
+      }
+      contactGoal->forceConstraint2->force() = contactGoal->force;
+      contactGoal->forceConstraint2->dl().resize(0);
+      contactGoal->forceConstraint2->du().resize(0);
+      contactGoal->forceConstraint2->C().resize(0,6);
+
       if(!contactGoal->forceReductionConstraint){
         contactGoal->forceReductionConstraint = std::make_shared<aik_constraint::ForceConstraint>();
       }

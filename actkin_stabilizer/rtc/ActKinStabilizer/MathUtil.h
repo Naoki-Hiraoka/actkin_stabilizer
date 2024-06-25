@@ -44,6 +44,7 @@ namespace actkin_stabilizer{
 
     std::vector<Eigen::Vector2d> calcIntersectConvexHull(const std::vector<Eigen::Vector2d>& P, const std::vector<Eigen::Vector2d>& Q);
 
+    std::vector<Eigen::Vector2d> resizeHull(const std::vector<Eigen::Vector2d>& hull, double length);
   };
 
 };

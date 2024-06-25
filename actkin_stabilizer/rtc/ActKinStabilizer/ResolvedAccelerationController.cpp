@@ -75,9 +75,10 @@ namespace actkin_stabilizer {
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > jointLimitConstraints;
     // 接触力制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > forceConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > forceConstraints2;
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > forceReductionConstraints;
     this->calcVariables(state, activeNextContacts, instance_name,
-                        joints, forces, jointLimitConstraints, forceConstraints, forceReductionConstraints);
+                        joints, forces, jointLimitConstraints, forceConstraints, forceConstraints2, forceReductionConstraints);
 
     // 力の釣り合い制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eomConstraints;
@@ -101,7 +102,7 @@ namespace actkin_stabilizer {
 
     // 重心の目標加速度.
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > comConstraints;
-    bool solved1 = this->calcCOMConstraints(state, goal, forces, forceConstraints, eomConstraints, instance_name,
+    bool solved1 = this->calcCOMConstraints(state, goal, forces, forceConstraints2, eomConstraints, instance_name,
                                            comConstraints);
     if(!solved1){
       for(int i=0;i<state.robot->numJoints();i++){
@@ -173,49 +174,88 @@ namespace actkin_stabilizer {
           // TODO 法線方向のチェック
           if( ((value - it->second->region.ld).array() >= 0.0).all() &&
               ((it->second->region.ud - value).array() >= 0.0).all() ){
-            points.push_back(p.head<2>() + Eigen::Vector2d(goal.contactMargin,goal.contactMargin));
-            points.push_back(p.head<2>() + Eigen::Vector2d(-goal.contactMargin,goal.contactMargin));
-            points.push_back(p.head<2>() + Eigen::Vector2d(-goal.contactMargin,-goal.contactMargin));
-            points.push_back(p.head<2>() + Eigen::Vector2d(goal.contactMargin,-goal.contactMargin));
+            double margin = goal.contactMargin;
+            points.push_back(p.head<2>() + Eigen::Vector2d(margin,margin));
+            points.push_back(p.head<2>() + Eigen::Vector2d(-margin,margin));
+            points.push_back(p.head<2>() + Eigen::Vector2d(-margin,-margin));
+            points.push_back(p.head<2>() + Eigen::Vector2d(margin,-margin));
+
           }
         }
       }
 
       mathutil::calcConvexHull(points, points);
       std::vector <Eigen::Vector2d> surface = mathutil::calcIntersectConvexHull(points, it->second->surface);
-      if(surface.size() >= 3){
-        // update WrenchC, wrenchld, wrenchud
-        // 0 <  0  0  1  0  0  0 < 1e10
-        // 0 <  1  0 mt  0  0  0 < 1e10
-        // 0 < -1  0 mt  0  0  0 < 1e10
-        // 0 <  0  1 mt  0  0  0 < 1e10
-        // 0 <  0 -1 mt  0  0  0 < 1e10
-        // 0 <  0  0  d r1 r2  0 < 1e10 ;; x hull.size()
-        // 0 <  0  0 mr  0  0  1 < 1e10
-        // 0 <  0  0 mr  0  0 -1 < 1e10
-        int dim = 7 + surface.size();
-        it->second->forceConstraint->C() = Eigen::SparseMatrix<double,Eigen::RowMajor>(dim,6);
-        it->second->forceConstraint->dl() = Eigen::VectorXd::Zero(dim);
-        it->second->forceConstraint->du() = 1e10 * Eigen::VectorXd::Ones(dim);
-        int idx=0;
-        it->second->forceConstraint->C().insert(idx,2) = 1.0; it->second->forceConstraint->dl()[idx] = it->second->minFz; it->second->forceConstraint->du()[idx] = it->second->maxFz; idx++;
-        it->second->forceConstraint->C().insert(idx,0) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
-        it->second->forceConstraint->C().insert(idx,0) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
-        it->second->forceConstraint->C().insert(idx,1) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
-        it->second->forceConstraint->C().insert(idx,1) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
-        for(int j=0;j<surface.size();j++){
-          Eigen::Vector2d v1 = surface[j]; // EEF frame/origin
-          Eigen::Vector2d v2 = surface[(j+1<surface.size())?j+1:0]; // EEF frame/origin
-          if(v1.head<2>() == v2.head<2>()) continue;
-          Eigen::Vector2d r = Eigen::Vector2d(v2[1]-v1[1],v1[0]-v2[0]).normalized();
-          double d = r.dot(v1);
-          it->second->forceConstraint->C().insert(idx,2) = d; it->second->forceConstraint->C().insert(idx,3) = -r[1]; it->second->forceConstraint->C().insert(idx,4) = r[0]; idx++;
-        }
-        it->second->forceConstraint->C().insert(idx,5) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
-        it->second->forceConstraint->C().insert(idx,5) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
 
-        it->second->forceConstraint->dl() *= goal.forceRatio;
-        it->second->forceConstraint->du() *= goal.forceRatio;
+      std::vector <Eigen::Vector2d> surface2 = surface;//mathutil::resizeHull(surface,-0.01);
+
+      if(surface.size() >= 3 && surface2.size() >= 3){
+        {
+          // update WrenchC, wrenchld, wrenchud
+          // 0 <  0  0  1  0  0  0 < 1e10
+          // 0 <  1  0 mt  0  0  0 < 1e10
+          // 0 < -1  0 mt  0  0  0 < 1e10
+          // 0 <  0  1 mt  0  0  0 < 1e10
+          // 0 <  0 -1 mt  0  0  0 < 1e10
+          // 0 <  0  0  d r1 r2  0 < 1e10 ;; x hull.size()
+          // 0 <  0  0 mr  0  0  1 < 1e10
+          // 0 <  0  0 mr  0  0 -1 < 1e10
+          int dim = 7 + surface.size();
+          it->second->forceConstraint->C() = Eigen::SparseMatrix<double,Eigen::RowMajor>(dim,6);
+          it->second->forceConstraint->dl() = Eigen::VectorXd::Zero(dim);
+          it->second->forceConstraint->du() = 1e10 * Eigen::VectorXd::Ones(dim);
+          int idx=0;
+          it->second->forceConstraint->C().insert(idx,2) = 1.0; it->second->forceConstraint->dl()[idx] = it->second->minFz; it->second->forceConstraint->du()[idx] = it->second->maxFz; idx++;
+          it->second->forceConstraint->C().insert(idx,0) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+          it->second->forceConstraint->C().insert(idx,0) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+          it->second->forceConstraint->C().insert(idx,1) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+          it->second->forceConstraint->C().insert(idx,1) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muTrans; idx++;
+          for(int j=0;j<surface.size();j++){
+            Eigen::Vector2d v1 = surface[j]; // EEF frame/origin
+            Eigen::Vector2d v2 = surface[(j+1<surface.size())?j+1:0]; // EEF frame/origin
+            if(v1.head<2>() == v2.head<2>()) continue;
+            Eigen::Vector2d r = Eigen::Vector2d(v2[1]-v1[1],v1[0]-v2[0]).normalized();
+            double d = r.dot(v1);
+            it->second->forceConstraint->C().insert(idx,2) = d; it->second->forceConstraint->C().insert(idx,3) = -r[1]; it->second->forceConstraint->C().insert(idx,4) = r[0]; idx++;
+          }
+          it->second->forceConstraint->C().insert(idx,5) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
+          it->second->forceConstraint->C().insert(idx,5) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
+          it->second->forceConstraint->dl() *= goal.forceRatio;
+          it->second->forceConstraint->du() *= goal.forceRatio;
+        }
+        {
+          // update WrenchC, wrenchld, wrenchud
+          // 0 <  0  0  1  0  0  0 < 1e10
+          // 0 <  1  0 mt  0  0  0 < 1e10
+          // 0 < -1  0 mt  0  0  0 < 1e10
+          // 0 <  0  1 mt  0  0  0 < 1e10
+          // 0 <  0 -1 mt  0  0  0 < 1e10
+          // 0 <  0  0  d r1 r2  0 < 1e10 ;; x hull.size()
+          // 0 <  0  0 mr  0  0  1 < 1e10
+          // 0 <  0  0 mr  0  0 -1 < 1e10
+          int dim = 7 + surface2.size();
+          it->second->forceConstraint2->C() = Eigen::SparseMatrix<double,Eigen::RowMajor>(dim,6);
+          it->second->forceConstraint2->dl() = Eigen::VectorXd::Zero(dim);
+          it->second->forceConstraint2->du() = 1e10 * Eigen::VectorXd::Ones(dim);
+          int idx=0;
+          it->second->forceConstraint2->C().insert(idx,2) = 1.0; it->second->forceConstraint2->dl()[idx] = it->second->minFz; it->second->forceConstraint2->du()[idx] = it->second->maxFz; idx++;
+          it->second->forceConstraint2->C().insert(idx,0) = 1.0; it->second->forceConstraint2->C().insert(idx,2) = it->second->muTrans; idx++;
+          it->second->forceConstraint2->C().insert(idx,0) = -1.0; it->second->forceConstraint2->C().insert(idx,2) = it->second->muTrans; idx++;
+          it->second->forceConstraint2->C().insert(idx,1) = 1.0; it->second->forceConstraint2->C().insert(idx,2) = it->second->muTrans; idx++;
+          it->second->forceConstraint2->C().insert(idx,1) = -1.0; it->second->forceConstraint2->C().insert(idx,2) = it->second->muTrans; idx++;
+          for(int j=0;j<surface2.size();j++){
+            Eigen::Vector2d v1 = surface2[j]; // EEF frame/origin
+            Eigen::Vector2d v2 = surface2[(j+1<surface2.size())?j+1:0]; // EEF frame/origin
+            if(v1.head<2>() == v2.head<2>()) continue;
+            Eigen::Vector2d r = Eigen::Vector2d(v2[1]-v1[1],v1[0]-v2[0]).normalized();
+            double d = r.dot(v1);
+            it->second->forceConstraint2->C().insert(idx,2) = d; it->second->forceConstraint2->C().insert(idx,3) = -r[1]; it->second->forceConstraint2->C().insert(idx,4) = r[0]; idx++;
+          }
+          it->second->forceConstraint2->C().insert(idx,5) = 1.0; it->second->forceConstraint2->C().insert(idx,2) = it->second->muRot; idx++;
+          it->second->forceConstraint2->C().insert(idx,5) = -1.0; it->second->forceConstraint2->C().insert(idx,2) = it->second->muRot; idx++;
+          it->second->forceConstraint2->dl() *= goal.forceRatio;
+          it->second->forceConstraint2->du() *= goal.forceRatio;
+        }
 
         allNextContacts.push_back(it->second);
 
@@ -257,6 +297,7 @@ namespace actkin_stabilizer {
                                                      std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
                                                      std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointLimitConstraints,
                                                      std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                                     std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints2,
                                                      std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints) const{
     joints.clear();
     jointLimitConstraints.clear();
@@ -274,6 +315,7 @@ namespace actkin_stabilizer {
     for(int i = 0; i < activeNextContacts.size(); i++){
       forces.push_back(activeNextContacts[i]->force);
       forceConstraints.push_back(activeNextContacts[i]->forceConstraint);
+      forceConstraints2.push_back(activeNextContacts[i]->forceConstraint2);
       forceReductionConstraints.push_back(activeNextContacts[i]->forceReductionConstraint);
 
       //activeNextContacts[i]->forceConstraint->debugLevel() = 2;
@@ -330,7 +372,7 @@ namespace actkin_stabilizer {
   bool ResolvedAccelerationController::calcCOMConstraints(const State& state,
                                                           const Goal& goal,
                                                           const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
-                                                          const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                                                          const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints2,
                                                           const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
                                                           const std::string& instance_name,
                                                           std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const{
@@ -381,7 +423,7 @@ namespace actkin_stabilizer {
 
       {
         std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-        constraints_.insert(constraints_.end(), forceConstraints.begin(), forceConstraints.end());
+        constraints_.insert(constraints_.end(), forceConstraints2.begin(), forceConstraints2.end());
         constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
         constraints.push_back(constraints_);
       }

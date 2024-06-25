@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   eigen_rtm_conversions
   rtm_data_tools
   contact_state_msgs
+  cddeigen
   )
 find_package(choreonoid REQUIRED)
 

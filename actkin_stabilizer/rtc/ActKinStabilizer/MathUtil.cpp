@@ -1,5 +1,6 @@
 #include "MathUtil.h"
 #include <limits>
+#include <cddeigen/cddeigen.h>
 
 namespace actkin_stabilizer{
   namespace mathutil {
@@ -153,6 +154,67 @@ namespace actkin_stabilizer{
       return R;
 
       // OpenCVのcv::intersectConvexConvexは、一方が一方に内接する場合に計算に失敗するので使ってはいけない.
+    }
+
+    std::vector<Eigen::Vector2d> resizeHull(const std::vector<Eigen::Vector2d>& hull, double length){
+      // cddlibは低速なので使うべきでない
+      Eigen::MatrixXd V(2,hull.size());
+      Eigen::MatrixXd R_nonneg(2,0);
+      Eigen::MatrixXd R_free(2,0);
+      for(int i=0;i<hull.size();i++){
+        V.col(i) = hull[i];
+      }
+      Eigen::MatrixXd A_eq, A_ineq;
+      Eigen::VectorXd b_eq, b_ineq;
+      if(!cddeigen::VtoHgmp(V,R_nonneg,R_free,A_eq,b_eq,A_ineq,b_ineq)){
+        return std::vector<Eigen::Vector2d>();
+      }
+      for(int i=0;i<A_eq.rows();i++){
+        double norm = A_eq.row(i).norm();
+        if(norm > 0){
+          A_eq.row(i) /= norm;
+          b_eq[i] /= norm;
+        }
+      }
+      for(int i=0;i<A_ineq.rows();i++){
+        double norm = A_ineq.row(i).norm();
+        if(norm > 0){
+          A_ineq.row(i) /= norm;
+          b_ineq[i] /= norm;
+        }
+      }
+
+      Eigen::MatrixXd A_eq2(0,2);
+      Eigen::VectorXd b_eq2(0);
+      Eigen::MatrixXd A_ineq2(A_eq.rows()*2+A_ineq.rows(),2);
+      Eigen::VectorXd b_ineq2(A_eq.rows()*2+A_ineq.rows());
+      int idx = 0;
+      for(int i=0;i<A_eq.rows();i++){
+        A_ineq2.row(idx) = A_eq.row(i);
+        b_ineq2[idx] = b_eq[i] + length;
+        idx++;
+        A_ineq2.row(idx) = -A_eq.row(i);
+        b_ineq2[idx] = -b_eq[i] + length;
+        idx++;
+      }
+      for(int i=0;i<A_ineq.rows();i++){
+        A_ineq2.row(idx) = A_ineq.row(i);
+        b_ineq2[idx] = b_ineq[i] + length;
+        idx++;
+      }
+
+      Eigen::MatrixXd V2;
+      Eigen::MatrixXd R_nonneg2;
+      Eigen::MatrixXd R_free2;
+      if(!cddeigen::HtoVgmp(A_eq2,b_eq2,A_ineq2,b_ineq2,V2,R_nonneg2,R_free2)){
+        return std::vector<Eigen::Vector2d>();
+      }
+
+
+      std::vector<Eigen::Vector2d> vertices(V2.cols());
+      for(int i=0;i<V2.cols();i++) vertices[i] = V2.col(i);
+      mathutil::calcConvexHull(vertices, vertices);
+      return vertices;
     }
 
   };

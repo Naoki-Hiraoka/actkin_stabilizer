@@ -53,6 +53,7 @@ namespace actkin_stabilizer {
                        std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
                        std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointLimitConstraints,
                        std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                       std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints2,
                        std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints) const;
 
     bool calcEOMConstraints(const State& state,
@@ -77,7 +78,7 @@ namespace actkin_stabilizer {
     bool calcCOMConstraints(const State& state,
                             const Goal& goals,
                             const std::vector<std::shared_ptr<aik_constraint::Force> >& forces,
-                            const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
+                            const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints2,
                             const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints,
                             const std::string& instance_name,
                             std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints) const;

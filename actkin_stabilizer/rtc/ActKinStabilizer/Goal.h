@@ -71,6 +71,7 @@ namespace actkin_stabilizer {
 
     std::shared_ptr<aik_constraint::Force> force = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint = nullptr;
+    std::shared_ptr<aik_constraint::ForceConstraint> forceConstraint2 = nullptr;
     std::shared_ptr<aik_constraint::ForceConstraint> forceReductionConstraint = nullptr;
     std::shared_ptr<aik_constraint::PositionConstraint> positionConstraint = nullptr;
 
@@ -97,7 +98,7 @@ namespace actkin_stabilizer {
     double contactDp = 1.0; // rootのvelフィルタのため支持脚は速度を持つので、15だと悪さをする
     double contactDr = 5.0; // 30.0だと斜面で縁が接触したときに面接触に移行しない. 15だとバタつく
 
-    double contactMargin = 0.02;
+    double contactMargin = 0.01; // 接触点から離れすぎた位置にCOPを出力すると、接触点を中心に旋回するのではなく空中で旋回してしまい意図せぬ挙動となる.
 
     double forceRatio = 1e-2; // 100N = 100kg*1ms/s^2と1m/s^2を同じ最適化で扱うためにスケーリング. これがないと加速度の誤差が大きくなり、特に動歩行時の重心の加速が問題になる.
 
