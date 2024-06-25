@@ -56,6 +56,7 @@ namespace actkin_stabilizer {
                        std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints) const;
 
     bool calcEOMConstraints(const State& state,
+                            const Goal& goal,
                             const std::string& instance_name,
                             std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints) const;
 
@@ -94,6 +95,7 @@ namespace actkin_stabilizer {
                               std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints) const;
 
     bool calcRAC(const State& state,
+                 const Goal& goal,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints,

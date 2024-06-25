@@ -228,7 +228,7 @@ namespace actkin_stabilizer{
         vrpGoal->force = std::make_shared<aik_constraint::Force>();
         vrpGoal->force->F() = cnoid::VectorX::Zero(1);
         vrpGoal->force->S().resize(6,1);
-        for(int j=0;j<3;j++) vrpGoal->force->S().insert(j,0) = 1.0;
+        for(int j=0;j<3;j++) vrpGoal->force->S().insert(j,0) = 1.0 / this->forceRatio;
         vrpGoal->force->B_link() = state.robot->rootLink();
       }
 
@@ -245,7 +245,7 @@ namespace actkin_stabilizer{
         vrpGoal->force2 = std::make_shared<aik_constraint::Force>();
         vrpGoal->force2->F() = cnoid::VectorX::Zero(3);
         vrpGoal->force2->S().resize(6,3);
-        for(int j=0;j<3;j++) vrpGoal->force2->S().insert(j,j) = 1.0;
+        for(int j=0;j<3;j++) vrpGoal->force2->S().insert(j,j) = 1.0 / this->forceRatio;
         vrpGoal->force2->B_link() = state.robot->rootLink();
       }
 
@@ -460,6 +460,7 @@ namespace actkin_stabilizer{
          contactGoal->force->B_link() != contactGoal->link2) {
         contactGoal->force = std::make_shared<aik_constraint::Force>();
         aik_constraint::Force::setFACE(contactGoal->force);
+        contactGoal->force->S() /= this->forceRatio;
       }
       contactGoal->force->A_link() = contactGoal->link1;
       contactGoal->force->A_localpos() = contactGoal->localPose1;
@@ -477,9 +478,9 @@ namespace actkin_stabilizer{
         contactGoal->forceReductionConstraint = std::make_shared<aik_constraint::ForceConstraint>();
       }
       contactGoal->forceReductionConstraint->force() = contactGoal->force;
-      contactGoal->forceReductionConstraint->dl() = Eigen::VectorXd::Zero(5);
+      contactGoal->forceReductionConstraint->dl() = Eigen::VectorXd::Zero(5) * this->forceRatio;
       contactGoal->forceReductionConstraint->C().resize(5,6);
-      contactGoal->forceReductionConstraint->du() = Eigen::VectorXd::Zero(5);
+      contactGoal->forceReductionConstraint->du() = Eigen::VectorXd::Zero(5) * this->forceRatio;
       contactGoal->forceReductionConstraint->C().insert(0,0) = 1e0;
       contactGoal->forceReductionConstraint->C().insert(1,1) = 1e0;
       contactGoal->forceReductionConstraint->C().insert(2,3) = 1e0;

@@ -81,7 +81,7 @@ namespace actkin_stabilizer {
 
     // 力の釣り合い制約
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eomConstraints;
-    this->calcEOMConstraints(state, instance_name,
+    this->calcEOMConstraints(state, goal, instance_name,
                              eomConstraints);
 
     // 接触部位がめりこまない制約
@@ -124,6 +124,7 @@ namespace actkin_stabilizer {
 
     // QPを解いて、ddqとFに入れる.
     bool solved2 = this->calcRAC(state,
+                                 goal,
                                  jointLimitConstraints,
                                  forceConstraints,
                                  forceReductionConstraints,
@@ -192,12 +193,7 @@ namespace actkin_stabilizer {
         // 0 <  0  0  d r1 r2  0 < 1e10 ;; x hull.size()
         // 0 <  0  0 mr  0  0  1 < 1e10
         // 0 <  0  0 mr  0  0 -1 < 1e10
-        int dim;
-        if(surface.size() == 1){
-          dim = 7 + 2;
-        }else{
-          dim = 7 + surface.size();
-        }
+        int dim = 7 + surface.size();
         it->second->forceConstraint->C() = Eigen::SparseMatrix<double,Eigen::RowMajor>(dim,6);
         it->second->forceConstraint->dl() = Eigen::VectorXd::Zero(dim);
         it->second->forceConstraint->du() = 1e10 * Eigen::VectorXd::Ones(dim);
@@ -217,6 +213,9 @@ namespace actkin_stabilizer {
         }
         it->second->forceConstraint->C().insert(idx,5) = 1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
         it->second->forceConstraint->C().insert(idx,5) = -1.0; it->second->forceConstraint->C().insert(idx,2) = it->second->muRot; idx++;
+
+        it->second->forceConstraint->dl() *= goal.forceRatio;
+        it->second->forceConstraint->du() *= goal.forceRatio;
 
         allNextContacts.push_back(it->second);
 
@@ -242,6 +241,12 @@ namespace actkin_stabilizer {
       if(redundant){
         redundantContacts.push_back(state.contacts[i]);
       }
+    }
+
+    std::cerr << allNextContacts.size() << std::endl;
+
+    if(allNextContacts.size() == 0){
+      std::cerr << "[" << instance_name << "] no contact found" << std::endl;
     }
 
     return true;
@@ -282,9 +287,11 @@ namespace actkin_stabilizer {
   }
 
   bool ResolvedAccelerationController::calcEOMConstraints(const State& state,
+                                                          const Goal& goal,
                                                           const std::string& instance_name,
                                                           std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eomConstraints) const{
     eomConstraints.clear();
+    state.eomConstraint->weight() = goal.forceRatio;
     eomConstraints.push_back(state.eomConstraint);
 
     state.eomConstraint->debugLevel() = 2;
@@ -360,11 +367,11 @@ namespace actkin_stabilizer {
       cnoid::Vector3 dir = F.normalized();
       double f = F.norm();
       for(int i=0;i<3;i++) {
-        goal.vrpGoals[0]->force->S().coeffRef(i,0) = dir[i];
+        goal.vrpGoals[0]->force->S().coeffRef(i,0) = dir[i] / goal.forceRatio;
       }
       goal.vrpGoals[0]->force->A_localpos().translation() = state.robot->centerOfMass();
-      goal.vrpGoals[0]->forceConstraint->dl()[0] = f;
-      goal.vrpGoals[0]->forceConstraint->du()[0] = f;
+      goal.vrpGoals[0]->forceConstraint->dl()[0] = f * goal.forceRatio;
+      goal.vrpGoals[0]->forceConstraint->du()[0] = f * goal.forceRatio;
       goal.vrpGoals[0]->force2->A_localpos().translation() = state.robot->centerOfMass();
 
       std::vector<std::shared_ptr<aik_constraint::Force> > forces2;
@@ -404,7 +411,7 @@ namespace actkin_stabilizer {
       prioritized_acc_inverse_kinematics_solver::IKParam param;
       param.debugLevel = this->debugLevel;
       //param.debugLevel = 2;
-      param.forceWeight = 1e-12;
+      param.forceWeight = 1e-12 / std::pow(goal.forceRatio, 2);
       solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
                                                                    forces2,
                                                                    constraints,
@@ -413,7 +420,7 @@ namespace actkin_stabilizer {
       if(solved){
         acc = (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F() + goal.vrpGoals[0]->force2->S() * goal.vrpGoals[0]->force2->F()).head<3>() / state.robot->mass();
 
-        if(true || this->debugLevel >= 2){
+        if(this->debugLevel >= 2){
           std::cerr << "refF" << (goal.vrpGoals[0]->force->S() * goal.vrpGoals[0]->force->F() + goal.vrpGoals[0]->force2->S() * goal.vrpGoals[0]->force2->F()).head<3>().transpose() << std::endl;
         }
       }
@@ -494,6 +501,7 @@ namespace actkin_stabilizer {
   }
 
   bool ResolvedAccelerationController::calcRAC(const State& state,
+                                               const Goal& goal,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleLimitConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& forceReductionConstraints,
@@ -551,7 +559,7 @@ namespace actkin_stabilizer {
 
       for(int i=0;i<constraints.size();i++){
         for(int j=0;j<constraints[i].size();j++){
-          //constraints[i][j]->debugLevel() = this->debugLevel;
+          constraints[i][j]->debugLevel() = this->debugLevel;
         }
       }
 
@@ -559,16 +567,39 @@ namespace actkin_stabilizer {
       param.debugLevel = this->debugLevel;
       //param.debugLevel = 2;
       param.ddqWeight = 1e-2; //1e-6がdefault. 1e-2なら特異点でもかなりロバスト. 1e-3以上にしないとIKが解けないときに発散
-      param.forceWeight = 1e-12;
+      param.forceWeight = 1e-12 / std::pow(goal.forceRatio, 2);
       bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
                                                                         forces,
                                                                         constraints,
                                                                         this->prevTasks,
-                                                                        param);
+                                                                        param,
+                                                                        [](std::shared_ptr<prioritized_qp_base::Task>& task, int debugLevel){
+                                                                          std::shared_ptr<prioritized_qp_osqp::Task> taskOSQP = std::dynamic_pointer_cast<prioritized_qp_osqp::Task>(task);
+                                                                          if(!taskOSQP){
+                                                                            task = std::make_shared<prioritized_qp_osqp::Task>();
+                                                                            taskOSQP = std::dynamic_pointer_cast<prioritized_qp_osqp::Task>(task);
+                                                                          }
+                                                                          taskOSQP->settings().verbose = (debugLevel>=2);
+                                                                          taskOSQP->settings().max_iter = 4000;
+                                                                          taskOSQP->settings().eps_abs = 1e-3;// 大きい方が速いが，不正確. 1e-5はかなり小さい. 1e-4は普通
+                                                                          taskOSQP->settings().eps_rel = 1e-3;// 大きい方が速いが，不正確. 1e-5はかなり小さい. 1e-4は普通
+                                                                          taskOSQP->settings().scaled_termination = true;// avoid too severe termination check
+                                                                        }
+                                                                        );
       if(!solved){
         std::cerr << "[" << instance_name << "] !solved" << std::endl;
         return false;
       }
+    }
+
+    if(this->debugLevel >= 2){
+      Eigen::MatrixXd CMJ;
+      cnoid::calcCMJacobian(state.robot,nullptr,CMJ); // [joint root]の順
+      cnoid::VectorX ddq(state.robot->numJoints()+6);
+      for(int i=0;i<state.robot->numJoints();i++) ddq[i] = state.robot->joint(i)->ddq();
+      ddq.segment<3>(state.robot->numJoints()) = state.robot->rootLink()->dv();
+      ddq.segment<3>(state.robot->numJoints()+3) = state.robot->rootLink()->dw();
+      std::cerr << "totalacc" << (CMJ * ddq * state.robot->mass() + state.robot->rootLink()->F_ext().head<3>()).transpose() << std::endl;
     }
 
     {
@@ -614,7 +645,7 @@ namespace actkin_stabilizer {
       prioritized_acc_inverse_kinematics_solver::IKParam param;
       param.debugLevel = this->debugLevel;
       //param.debugLevel = 2;
-      param.forceWeight = 1e-12;
+      param.forceWeight = 1e-12 / std::pow(goal.forceRatio, 2);
       bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
                                                                         forces,
                                                                         constraints,
@@ -639,7 +670,7 @@ namespace actkin_stabilizer {
     state.robot->calcForwardKinematics(true,true);
     state.robot->calcCenterOfMass();
     cnoid::Vector6 f = cnoid::calcInverseDynamics(state.robot->rootLink());
-    if(true || this->debugLevel >= 2){
+    if(this->debugLevel >= 2){
       f.tail<3>() += (-state.robot->centerOfMass()).cross(f.head<3>());
       std::cerr << "totalF" << f.transpose() << std::endl;
     }
@@ -668,7 +699,7 @@ namespace actkin_stabilizer {
       }
     }
 
-    if(true || this->debugLevel >= 2){
+    if(this->debugLevel >= 2){
       std::cerr << "sumF" << f.transpose() << std::endl;
     }
 
