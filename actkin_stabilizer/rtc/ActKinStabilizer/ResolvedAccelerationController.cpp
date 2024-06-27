@@ -258,7 +258,7 @@ namespace actkin_stabilizer {
         }
 
         allNextContacts.push_back(it->second);
-
+        std::cerr << "contact "<<it->second->name << std::endl;
       }
 
     }
