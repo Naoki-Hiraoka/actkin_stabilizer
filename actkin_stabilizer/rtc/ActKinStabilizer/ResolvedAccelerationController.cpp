@@ -264,7 +264,7 @@ namespace actkin_stabilizer {
     }
 
     for(int i=0;i<state.contacts.size();i++){
-      bool redundant;
+      bool redundant = true;
       for(int j=0;j<allNextContacts.size();j++){
         cnoid::Isometry3 poseInv = ((allNextContacts[j]->link1 ? allNextContacts[j]->link1->T() * allNextContacts[j]->localPose1 : allNextContacts[j]->localPose1).inverse());
         if( ((state.contacts[i]->link1 == allNextContacts[j]->link1) && (state.contacts[i]->link2 == allNextContacts[j]->link2)) ||
@@ -343,7 +343,28 @@ namespace actkin_stabilizer {
                                                                   const std::string& instance_name,
                                                                   std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& penetrationConstraints) const{
     penetrationConstraints.clear();
-    // TODO
+    for(int i=0;i<redundantContacts.size();i++){
+      cnoid::Isometry3 pose = redundantContacts[i]->link1 ? redundantContacts[i]->link1->T() * redundantContacts[i]->localPose1 : redundantContacts[i]->localPose1;
+
+      if(!redundantContacts[i]->penetrationConstraint){
+        redundantContacts[i]->penetrationConstraint = std::make_shared<aik_constraint::RegionConstraint>();
+        redundantContacts[i]->penetrationConstraint->C().resize(1,3);
+        redundantContacts[i]->penetrationConstraint->C().insert(0,2) = 1.0;
+        redundantContacts[i]->penetrationConstraint->dl().resize(1);
+        redundantContacts[i]->penetrationConstraint->dl()[0] = 0.0;
+        redundantContacts[i]->penetrationConstraint->du().resize(1);
+        redundantContacts[i]->penetrationConstraint->du()[0] = 1e5;
+        redundantContacts[i]->penetrationConstraint->pgain() = 0.0;
+        redundantContacts[i]->penetrationConstraint->dgain() = 20.0; // これが無いと振動
+      }
+      redundantContacts[i]->penetrationConstraint->A_link() = redundantContacts[i]->link1;
+      redundantContacts[i]->penetrationConstraint->A_localpos() = redundantContacts[i]->localPose1.translation();
+      redundantContacts[i]->penetrationConstraint->B_link() = redundantContacts[i]->link2;
+      redundantContacts[i]->penetrationConstraint->B_localpos() = redundantContacts[i]->link2 ? redundantContacts[i]->link2->T().inverse() * pose.translation() : pose.translation();
+      redundantContacts[i]->penetrationConstraint->eval_localR() = pose.linear();
+
+      penetrationConstraints.push_back(redundantContacts[i]->penetrationConstraint);
+    }
     return true;
   }
 
@@ -489,17 +510,18 @@ namespace actkin_stabilizer {
     eefLowConstraints.clear();
 
     for(std::unordered_map<std::string, std::shared_ptr<RefEE> >::const_iterator it=goal.eeGoals.begin(); it != goal.eeGoals.end(); it++){
-      cnoid::Isometry3 p;
-      cnoid::Vector6 v;
-      cnoid::Vector6 a;
+      cnoid::Isometry3 p; // frame frame
+      cnoid::Vector6 v; // frame frame. local origin
+      cnoid::Vector6 a; // frame frame. local origin
       it->second->pose[0].value(p,v,a);
       cnoid::Isometry3 frame = it->second->frameLink ? it->second->frameLink->T() * it->second->framePose : it->second->framePose;
-      it->second->positionConstraint->B_localpos() = frame * p;
-      it->second->positionConstraint->B_localvel().head<3>() = frame.linear() * v.head<3>();
+      cnoid::Matrix3 evalR = it->second->positionConstraint->B_localpos().linear(); // world frame
+      it->second->positionConstraint->B_localpos() = frame * p; // world frame
+      it->second->positionConstraint->B_localvel().head<3>() = frame.linear() * v.head<3>(); // world frame. local origin
       it->second->positionConstraint->B_localvel().tail<3>() = frame.linear() * v.tail<3>();
-      it->second->positionConstraint->ref_acc().head<3>() = frame.linear() * a.head<3>();
-      it->second->positionConstraint->ref_acc().tail<3>() = frame.linear() * a.tail<3>();
-      it->second->positionConstraint->eval_localR() = it->second->positionConstraint->B_localpos().linear();
+      it->second->positionConstraint->ref_acc().head<3>() = evalR.transpose() * frame.linear() * a.head<3>(); // eval frame. local origin
+      it->second->positionConstraint->ref_acc().tail<3>() = evalR.transpose() * frame.linear() * a.tail<3>();
+      it->second->positionConstraint->eval_localR() = evalR;
 
       if(it->second->priority >= 1) {
         eefHighConstraints.push_back(it->second->positionConstraint);

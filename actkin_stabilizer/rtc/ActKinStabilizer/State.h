@@ -28,6 +28,8 @@ namespace actkin_stabilizer {
     bool freeY = false;
     cnoid::Vector3 force = cnoid::Vector3::Zero(); //local frame
     //std::shared_ptr<ik_constraint2::PositionConstraint> ikc;
+
+    std::shared_ptr<aik_constraint::RegionConstraint> penetrationConstraint = nullptr;
   };
 
   class Collision {
