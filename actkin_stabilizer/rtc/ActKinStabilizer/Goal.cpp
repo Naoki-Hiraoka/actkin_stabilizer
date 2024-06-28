@@ -469,44 +469,45 @@ namespace actkin_stabilizer{
 
       if(!contactGoal->forceConstraint){
         contactGoal->forceConstraint = std::make_shared<aik_constraint::ForceConstraint>();
+        contactGoal->forceConstraint->dl().resize(0);
+        contactGoal->forceConstraint->du().resize(0);
+        contactGoal->forceConstraint->C().resize(0,6);
       }
       contactGoal->forceConstraint->force() = contactGoal->force;
-      contactGoal->forceConstraint->dl().resize(0);
-      contactGoal->forceConstraint->du().resize(0);
-      contactGoal->forceConstraint->C().resize(0,6);
 
       if(!contactGoal->forceConstraint2){
         contactGoal->forceConstraint2 = std::make_shared<aik_constraint::ForceConstraint>();
+        contactGoal->forceConstraint2->dl().resize(0);
+        contactGoal->forceConstraint2->du().resize(0);
+        contactGoal->forceConstraint2->C().resize(0,6);
       }
       contactGoal->forceConstraint2->force() = contactGoal->force;
-      contactGoal->forceConstraint2->dl().resize(0);
-      contactGoal->forceConstraint2->du().resize(0);
-      contactGoal->forceConstraint2->C().resize(0,6);
 
       if(!contactGoal->forceReductionConstraint){
         contactGoal->forceReductionConstraint = std::make_shared<aik_constraint::ForceConstraint>();
+        contactGoal->forceReductionConstraint->dl() = Eigen::VectorXd::Zero(5);
+        contactGoal->forceReductionConstraint->C().resize(5,6);
+        contactGoal->forceReductionConstraint->du() = Eigen::VectorXd::Zero(5);
+        contactGoal->forceReductionConstraint->C().insert(0,0) = 1e0;
+        contactGoal->forceReductionConstraint->C().insert(1,1) = 1e0;
+        contactGoal->forceReductionConstraint->C().insert(2,3) = 1e0;
+        contactGoal->forceReductionConstraint->C().insert(3,4) = 1e0;
+        contactGoal->forceReductionConstraint->C().insert(4,5) = 1e0;
+        //contactGoal->forceReductionConstraint->C() /= this->forceRatio;
       }
       contactGoal->forceReductionConstraint->force() = contactGoal->force;
-      contactGoal->forceReductionConstraint->dl() = Eigen::VectorXd::Zero(5);
-      contactGoal->forceReductionConstraint->C().resize(5,6);
-      contactGoal->forceReductionConstraint->du() = Eigen::VectorXd::Zero(5);
-      contactGoal->forceReductionConstraint->C().insert(0,0) = 1e0;
-      contactGoal->forceReductionConstraint->C().insert(1,1) = 1e0;
-      contactGoal->forceReductionConstraint->C().insert(2,3) = 1e0;
-      contactGoal->forceReductionConstraint->C().insert(3,4) = 1e0;
-      contactGoal->forceReductionConstraint->C().insert(4,5) = 1e0;
 
       if(!contactGoal->positionConstraint) {
         contactGoal->positionConstraint = std::make_shared<aik_constraint::PositionConstraint>();
+        // 相対速度0
+        contactGoal->positionConstraint->pgain().setZero();
+        contactGoal->positionConstraint->dgain() << this->contactDp, this->contactDp, this->contactDp, this->contactDr, this->contactDr, this->contactDr;
+        //contactGoal->positionConstraint->dgain().setZero();
+        contactGoal->positionConstraint->ref_acc().setZero();
       }
       contactGoal->positionConstraint->A_link() = contactGoal->link1;
       contactGoal->positionConstraint->A_localpos() = contactGoal->localPose1;
       contactGoal->positionConstraint->B_link() = contactGoal->link2;
-      // 相対速度0
-      contactGoal->positionConstraint->pgain().setZero();
-      contactGoal->positionConstraint->dgain() << this->contactDp, this->contactDp, this->contactDp, this->contactDr, this->contactDr, this->contactDr;
-      //contactGoal->positionConstraint->dgain().setZero();
-      contactGoal->positionConstraint->ref_acc().setZero();
 
       nextContactGoals[name] = contactGoal;
     }
