@@ -258,7 +258,9 @@ namespace actkin_stabilizer {
         }
 
         allNextContacts.push_back(it->second);
-        std::cerr << "contact "<<it->second->name << std::endl;
+        if(this->debugLevel >= 2){
+          std::cerr << "contact "<<it->second->name << std::endl;
+        }
       }
 
     }
@@ -445,7 +447,11 @@ namespace actkin_stabilizer {
       {
         std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
         constraints_.insert(constraints_.end(), forceConstraints2.begin(), forceConstraints2.end());
-        constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), eomConstraints.begin(), eomConstraints.end()); // こっちのほうが安定する. hard constraintにすると、転倒時に失敗してトルク0になる副作用的メリットがある
         constraints.push_back(constraints_);
       }
       {
@@ -472,7 +478,7 @@ namespace actkin_stabilizer {
       prioritized_acc_inverse_kinematics_solver::IKParam param;
       param.debugLevel = this->debugLevel;
       //param.debugLevel = 2;
-      param.forceWeight = 1e-12 / std::pow(goal.forceRatio, 2);
+      param.forceWeight = 1e-12;// / std::pow(goal.forceRatio, 2);
       solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
                                                                    forces2,
                                                                    constraints,
@@ -627,8 +633,8 @@ namespace actkin_stabilizer {
       }
 
       prioritized_acc_inverse_kinematics_solver::IKParam param;
-      //param.debugLevel = this->debugLevel;
-      param.debugLevel = 2;
+      param.debugLevel = this->debugLevel;
+      // param.debugLevel = 2;
       param.ddqWeight = 1e-2; //1e-6がdefault. 1e-2なら特異点でもかなりロバスト. 1e-3以上にしないとIKが解けないときに発散
       param.forceWeight = 1e-12 / std::pow(goal.forceRatio, 2);
       bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
@@ -706,8 +712,8 @@ namespace actkin_stabilizer {
       }
 
       prioritized_acc_inverse_kinematics_solver::IKParam param;
-      //param.debugLevel = this->debugLevel;
-      param.debugLevel = 2;
+      param.debugLevel = this->debugLevel;
+      // param.debugLevel = 2;
       param.forceWeight = 1e-12;// / std::pow(goal.forceRatio, 2);
       bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
                                                                         forces,
@@ -768,7 +774,7 @@ namespace actkin_stabilizer {
 
     for(int i=0;i<state.robot->numJoints();i++){
       cnoid::LinkPtr joint = state.robot->joint(i);
-      joint->u() += - 10 * joint->dq();
+      joint->u() += - state.dgain * joint->dq();
     }
 
     for(int i=0;i<state.robot->numJoints();i++){

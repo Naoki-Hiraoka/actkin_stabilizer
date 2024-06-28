@@ -68,6 +68,7 @@ namespace actkin_stabilizer {
     std::vector<double> softMaxTorque; // MODE_ST中はconstant. 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上. softMaxTorqueとモデルファイルの値の小さい方の値が使われる.
     std::vector<bool> jointControllable; // MODE_ST中はconstant. 要素数と順序はnumJoints()と同じ. falseの場合、RACでは動かさない(act値をそのまま). WDでは無視. トルク計算では目標トルクを通常通り計算した後、refTauの値で上書きされる.
     std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > > jointLimitTables; // constant. 要素数と順序はnumJoints()と同じ. for robot.
+    double dgain = 7.0; // 分解加速度制御上では不正確になるが、あったほうが接触が安定する. 10は大きすぎて動歩行時に遊脚の傾きが不正確になる. エンドエフェクタのゲインとの比に注意. 5がいい? 少し大きいか?
 
     // constraints
     std::vector<std::shared_ptr<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint> > jointLimitConstraints;

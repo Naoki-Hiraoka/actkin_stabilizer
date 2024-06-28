@@ -88,10 +88,10 @@ namespace actkin_stabilizer {
   public:
     // parameter
     double minHorizonTime = 0.3;
-    double Kp = 200.0;
-    double Dp = 30.0;
-    double Kr = 100.0;
-    double Dr = 20.0;
+    double Kp = 300.0;
+    double Dp = 35.0;
+    double Kr = 200.0;
+    double Dr = 30.0;
     double Kq = 10.0;
     double Dq = 10.0;
 
