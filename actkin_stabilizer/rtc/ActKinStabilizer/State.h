@@ -16,7 +16,6 @@
 #include <aik_constraint_joint_limit_table/aik_constraint_joint_limit_table.h>
 #include <contact_state_msgs/idl/ContactState.hh>
 
-
 namespace actkin_stabilizer {
 
   class Contact {
@@ -50,8 +49,7 @@ namespace actkin_stabilizer {
   public:
     // from data port. 狭義のstate
     cnoid::BodyPtr robot; // actual.
-    cnoid::Vector3 cogVel = cnoid::Vector3::Zero();
-    //cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> cogVel{3.5, cnoid::Vector3::Zero()}; // generate frame.  現在のCOM速度. cutoff=4.0Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ
+    cpp_filters::FirstOrderLowPassFilter<cnoid::Vector3> cogVel{3.5, cnoid::Vector3::Zero()}; // world frame.  現在のCOM速度. cutoff=3.5Hzは今の歩行時間と比べて遅すぎる気もするが、実際のところ問題なさそう? もとは4Hzだったが、 静止時に衝撃が加わると上下方向に左右交互に振動することがあるので少し小さくする必要がある. 3Hzにすると、追従性が悪くなってギアが飛んだ. 目標重心加速が急激に変動すると目標接触力が急激に変動するので、接触が不安定になるようだ. 特にシミュレーションで平らでない面に接した場合に顕著. ただし、エンドエフェクタ等の制御では速度に遅延があるとゲインを上げると振動的になるので、関節角速度とルートリンク速度、とくに関節角速度は低い周波数でfilterしてはならず、cogvelのみをフィルターする必要がある. 関節角速度とルートリンク速度片方だけでなく、両方を含んだcogVelに対してfilterしないといけない, ルートリンクだけフィルターしてcogvelを求めてもダメ.
 
     std::vector<std::shared_ptr<Contact> > contacts; // actual
     // objects
@@ -68,7 +66,7 @@ namespace actkin_stabilizer {
     std::vector<double> softMaxTorque; // MODE_ST中はconstant. 要素数と順序はnumJoints()と同じ. 単位は[Nm]. 0以上. softMaxTorqueとモデルファイルの値の小さい方の値が使われる.
     std::vector<bool> jointControllable; // MODE_ST中はconstant. 要素数と順序はnumJoints()と同じ. falseの場合、RACでは動かさない(act値をそのまま). WDでは無視. トルク計算では目標トルクを通常通り計算した後、refTauの値で上書きされる.
     std::vector<std::vector<std::shared_ptr<joint_limit_table::JointLimitTable> > > jointLimitTables; // constant. 要素数と順序はnumJoints()と同じ. for robot.
-    double dgain = 7.0; // 分解加速度制御上では不正確になるが、あったほうが接触が安定する. 10は大きすぎて動歩行時に遊脚の傾きが不正確になる. エンドエフェクタのゲインとの比に注意. 5がいい? 少し大きいか?
+    double dgain = 0.0; // 分解加速度制御上では不正確になるが、あったほうが接触が安定する. 10は大きすぎて動歩行時に遊脚の傾きが不正確になる. エンドエフェクタのゲインとの比に注意. 5がいい? 7がいい? -> simulation側に移動するので0へ
 
     // constraints
     std::vector<std::shared_ptr<aik_constraint_joint_limit_table::JointLimitMinMaxTableConstraint> > jointLimitConstraints;

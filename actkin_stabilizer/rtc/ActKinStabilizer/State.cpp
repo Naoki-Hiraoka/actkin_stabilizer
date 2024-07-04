@@ -56,7 +56,7 @@ namespace actkin_stabilizer {
   };
 
   void State::onStartStabilizer(){
-    //this->cogVel.reset(cnoid::Vector3::Zero());
+    this->cogVel.reset(cnoid::Vector3::Zero());
     return;
   }
 
@@ -111,8 +111,8 @@ namespace actkin_stabilizer {
       for(int i=0;i<this->robot->numJoints();i++) dq[i] = this->robot->joint(i)->dq();
       dq.segment<3>(this->robot->numJoints()) = this->robot->rootLink()->v();
       dq.tail<3>() = this->robot->rootLink()->w();
-      //this->cogVel.passFilter(CMJ * dq, dt);
-      this->cogVel = CMJ * dq;
+      this->cogVel.passFilter(CMJ * dq, dt);
+      //this->cogVel = CMJ * dq;
     }
   }
 

@@ -185,7 +185,7 @@ namespace actkin_stabilizer{
         vrpGoal->vrp[0].value(p,dp,ddp);
       }else{ // 今回始めて現れたvrp
         p = state.robot->centerOfMass();
-        dp = state.cogVel;//state.cogVel.value();
+        dp = state.cogVel.value();
         ddp.setZero();
       }
 

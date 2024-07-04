@@ -187,7 +187,7 @@ namespace actkin_stabilizer {
       mathutil::calcConvexHull(points, points);
       std::vector <Eigen::Vector2d> surface = mathutil::calcIntersectConvexHull(points, it->second->surface);
 
-      std::vector <Eigen::Vector2d> surface2 = surface;//mathutil::resizeHull(surface,-0.01);
+      std::vector <Eigen::Vector2d> surface2 = surface; //mathutil::resizeHull(surface,-0.01); // surface;
 
       if(surface.size() >= 3 && surface2.size() >= 3){
         {
@@ -416,7 +416,7 @@ namespace actkin_stabilizer {
                         goal.minHorizonTime - sum_t);
     }
 
-    cnoid::Vector3 cp = state.robot->centerOfMass() + state.cogVel/*state.cogVel.value()*/ / goal.vrpGoals[0]->omega;
+    cnoid::Vector3 cp = state.robot->centerOfMass() + state.cogVel.value() / goal.vrpGoals[0]->omega;
     cnoid::Vector3 vrp = cpp_controllers::calcFootGuidedControl<cnoid::Vector3>(goal.vrpGoals[0]->omega,
                                                                                 cnoid::Vector3::Zero(),
                                                                                 cp,
