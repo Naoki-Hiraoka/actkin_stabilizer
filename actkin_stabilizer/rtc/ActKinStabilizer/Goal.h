@@ -30,7 +30,8 @@ namespace actkin_stabilizer {
     std::vector<cpp_filters::TwoPointInterpolatorSE3> pose; // 必ずサイズは1以上
     std::vector<cpp_filters::TwoPointInterpolator<cnoid::Vector6> > wrench; // 必ずサイズは1以上
 
-    std::shared_ptr<aik_constraint::PositionConstraint> positionConstraint = nullptr;
+    std::shared_ptr<aik_constraint::PositionConstraint> positionConstraintTrans = nullptr;
+    std::shared_ptr<aik_constraint::PositionConstraint> positionConstraintRot = nullptr;
   };
 
   class RefVRP {
@@ -96,9 +97,9 @@ namespace actkin_stabilizer {
     double Dq = 10.0;
 
     double contactDp = 1.0; // rootのvelフィルタのため支持脚は速度を持つので、15だと悪さをする
-    double contactDr = 5.0; // 30.0だと斜面で縁が接触したときに面接触に移行しない. 15だとバタつく. 5?
+    double contactDr = 30.0; // 30.0だと斜面で縁が接触したときに面接触に移行しない. 15だとバタつく. 5?
 
-    double contactMargin = 0.02; // 接触点から離れすぎた位置にCOPを出力すると、接触点を中心に旋回するのではなく空中で旋回してしまい意図せぬ挙動となる. 近すぎる位置にしか出力しないと、edge接触から面接触への移行に時間がかかる. 0.05だと大きすぎる. 0.01だと小さすぎる
+    double contactMargin = 0.001; // 接触点から離れすぎた位置にCOPを出力すると、接触点を中心に旋回するのではなく空中で旋回してしまい意図せぬ挙動となる. 近すぎる位置にしか出力しないと、edge接触から面接触への移行に時間がかかる. 0.05だと大きすぎる. 0.01だと小さすぎる
 
     double forceRatio = 1e-2; // 100N = 100kg*1ms/s^2と1m/s^2を同じ最適化で扱うためにスケーリング. これがないと加速度の誤差が大きくなり、特に動歩行時の重心の加速が問題になる.
 

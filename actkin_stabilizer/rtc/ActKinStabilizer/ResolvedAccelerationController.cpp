@@ -112,10 +112,12 @@ namespace actkin_stabilizer {
     }
 
     // EEFの目標加速度
-    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefHighConstraints;
-    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefLowConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefTransHighConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefTransLowConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefRotHighConstraints;
+    std::vector<std::shared_ptr<aik_constraint::IKConstraint> > eefRotLowConstraints;
     this->calcEEFConstraints(state, goal, instance_name,
-                             eefHighConstraints, eefLowConstraints);
+                             eefTransHighConstraints, eefRotHighConstraints, eefTransLowConstraints, eefRotLowConstraints);
 
     // robot関節角度、robot角運動量
     std::vector<std::shared_ptr<aik_constraint::IKConstraint> > jointAngleConstraints;
@@ -134,8 +136,10 @@ namespace actkin_stabilizer {
                                  keepContactConstraints,
                                  collisionAvoidanceConstraints,
                                  comConstraints,
-                                 eefHighConstraints,
-                                 eefLowConstraints,
+                                 eefTransHighConstraints,
+                                 eefRotHighConstraints,
+                                 eefTransLowConstraints,
+                                 eefRotLowConstraints,
                                  jointAngleConstraints,
                                  angularMomentumConstraints,
                                  instance_name,
@@ -358,6 +362,7 @@ namespace actkin_stabilizer {
         redundantContacts[i]->penetrationConstraint->du()[0] = 1e5;
         redundantContacts[i]->penetrationConstraint->pgain() = 0.0;
         redundantContacts[i]->penetrationConstraint->dgain() = 20.0; // これが無いと振動
+        //redundantContacts[i]->penetrationConstraint->dgain() = 0.0;
       }
       redundantContacts[i]->penetrationConstraint->A_link() = redundantContacts[i]->link1;
       redundantContacts[i]->penetrationConstraint->A_localpos() = redundantContacts[i]->localPose1.translation();
@@ -365,7 +370,7 @@ namespace actkin_stabilizer {
       redundantContacts[i]->penetrationConstraint->B_localpos() = redundantContacts[i]->link2 ? redundantContacts[i]->link2->T().inverse() * pose.translation() : pose.translation();
       redundantContacts[i]->penetrationConstraint->eval_localR() = pose.linear();
 
-      penetrationConstraints.push_back(redundantContacts[i]->penetrationConstraint);
+      //penetrationConstraints.push_back(redundantContacts[i]->penetrationConstraint);
     }
     return true;
   }
@@ -478,7 +483,7 @@ namespace actkin_stabilizer {
       prioritized_acc_inverse_kinematics_solver::IKParam param;
       param.debugLevel = this->debugLevel;
       //param.debugLevel = 2;
-      param.forceWeight = 1e-12;// / std::pow(goal.forceRatio, 2);
+      param.forceWeight = 1e-10;// / std::pow(goal.forceRatio, 2);
       solved = prioritized_acc_inverse_kinematics_solver::solveAIK(std::vector<cnoid::LinkPtr>(),
                                                                    forces2,
                                                                    constraints,
@@ -509,11 +514,15 @@ namespace actkin_stabilizer {
   bool ResolvedAccelerationController::calcEEFConstraints(const State& state,
                                                           const Goal& goal,
                                                           const std::string& instance_name,
-                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
-                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints) const{
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransHighConstraints,
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotHighConstraints,
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransLowConstraints,
+                                                          std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotLowConstraints) const{
 
-    eefHighConstraints.clear();
-    eefLowConstraints.clear();
+    eefTransHighConstraints.clear();
+    eefRotHighConstraints.clear();
+    eefTransLowConstraints.clear();
+    eefRotLowConstraints.clear();
 
     for(std::unordered_map<std::string, std::shared_ptr<RefEE> >::const_iterator it=goal.eeGoals.begin(); it != goal.eeGoals.end(); it++){
       cnoid::Isometry3 p; // frame frame
@@ -521,18 +530,31 @@ namespace actkin_stabilizer {
       cnoid::Vector6 a; // frame frame. local origin
       it->second->pose[0].value(p,v,a);
       cnoid::Isometry3 frame = it->second->frameLink ? it->second->frameLink->T() * it->second->framePose : it->second->framePose;
-      cnoid::Matrix3 evalR = it->second->positionConstraint->B_localpos().linear(); // world frame
-      it->second->positionConstraint->B_localpos() = frame * p; // world frame
-      it->second->positionConstraint->B_localvel().head<3>() = frame.linear() * v.head<3>(); // world frame. local origin
-      it->second->positionConstraint->B_localvel().tail<3>() = frame.linear() * v.tail<3>();
-      it->second->positionConstraint->ref_acc().head<3>() = evalR.transpose() * frame.linear() * a.head<3>(); // eval frame. local origin
-      it->second->positionConstraint->ref_acc().tail<3>() = evalR.transpose() * frame.linear() * a.tail<3>();
-      it->second->positionConstraint->eval_localR() = evalR;
 
+      {
+        cnoid::Matrix3 evalR = it->second->positionConstraintTrans->B_localpos().linear(); // world frame
+        it->second->positionConstraintTrans->B_localpos() = frame * p; // world frame
+        it->second->positionConstraintTrans->B_localvel().head<3>() = frame.linear() * v.head<3>(); // world frame. local origin
+        it->second->positionConstraintTrans->B_localvel().tail<3>() = frame.linear() * v.tail<3>();
+        it->second->positionConstraintTrans->ref_acc().head<3>() = evalR.transpose() * frame.linear() * a.head<3>(); // eval frame. local origin
+        it->second->positionConstraintTrans->ref_acc().tail<3>() = evalR.transpose() * frame.linear() * a.tail<3>();
+        it->second->positionConstraintTrans->eval_localR() = evalR;
+      }
+      {
+        cnoid::Matrix3 evalR = it->second->positionConstraintRot->B_localpos().linear(); // world frame
+        it->second->positionConstraintRot->B_localpos() = frame * p; // world frame
+        it->second->positionConstraintRot->B_localvel().head<3>() = frame.linear() * v.head<3>(); // world frame. local origin
+        it->second->positionConstraintRot->B_localvel().tail<3>() = frame.linear() * v.tail<3>();
+        it->second->positionConstraintRot->ref_acc().head<3>() = evalR.transpose() * frame.linear() * a.head<3>(); // eval frame. local origin
+        it->second->positionConstraintRot->ref_acc().tail<3>() = evalR.transpose() * frame.linear() * a.tail<3>();
+        it->second->positionConstraintRot->eval_localR() = evalR;
+      }
       if(it->second->priority >= 1) {
-        eefHighConstraints.push_back(it->second->positionConstraint);
+        eefTransHighConstraints.push_back(it->second->positionConstraintTrans);
+        eefRotHighConstraints.push_back(it->second->positionConstraintRot);
       }else{
-        eefLowConstraints.push_back(it->second->positionConstraint);
+        eefTransLowConstraints.push_back(it->second->positionConstraintTrans);
+        eefRotLowConstraints.push_back(it->second->positionConstraintRot);
       }
 
       //it->second->positionConstraint->debugLevel() = 2;
@@ -579,8 +601,10 @@ namespace actkin_stabilizer {
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints,
-                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
-                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransHighConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotHighConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransLowConstraints,
+                                               const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotLowConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
                                                const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints,
                                                const std::string& instance_name,
@@ -607,12 +631,22 @@ namespace actkin_stabilizer {
       {
         std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
         constraints_.insert(constraints_.end(), comConstraints.begin(), comConstraints.end());
-        constraints_.insert(constraints_.end(), eefHighConstraints.begin(), eefHighConstraints.end());
+        constraints_.insert(constraints_.end(), eefTransHighConstraints.begin(), eefTransHighConstraints.end());
         constraints.push_back(constraints_);
       }
       {
         std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
-        constraints_.insert(constraints_.end(), eefLowConstraints.begin(), eefLowConstraints.end());
+        constraints_.insert(constraints_.end(), eefRotHighConstraints.begin(), eefRotHighConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), eefTransLowConstraints.begin(), eefTransLowConstraints.end());
+        constraints.push_back(constraints_);
+      }
+      {
+        std::vector<std::shared_ptr<aik_constraint::IKConstraint> > constraints_;
+        constraints_.insert(constraints_.end(), eefRotLowConstraints.begin(), eefRotLowConstraints.end());
         constraints.push_back(constraints_);
       }
       {
@@ -636,7 +670,7 @@ namespace actkin_stabilizer {
       param.debugLevel = this->debugLevel;
       // param.debugLevel = 2;
       param.ddqWeight = 1e-2; //1e-6がdefault. 1e-2なら特異点でもかなりロバスト. 1e-3以上にしないとIKが解けないときに発散
-      param.forceWeight = 1e-12 / std::pow(goal.forceRatio, 2);
+      param.forceWeight = 1e-10 / std::pow(goal.forceRatio, 2);
       bool solved = prioritized_acc_inverse_kinematics_solver::solveAIK(joints,
                                                                         forces,
                                                                         constraints,

@@ -136,21 +136,46 @@ namespace actkin_stabilizer{
       }
 
       {
-        if(!eeGoal->positionConstraint){
-          eeGoal->positionConstraint = std::make_shared<aik_constraint::PositionConstraint>();
+        if(!eeGoal->positionConstraintTrans){
+          eeGoal->positionConstraintTrans = std::make_shared<aik_constraint::PositionConstraint>();
         }
-        eeGoal->positionConstraint->A_link() = eeGoal->link;
-        eeGoal->positionConstraint->A_localpos() = eeGoal->localPose;
-        eeGoal->positionConstraint->B_link() = nullptr;
+        eeGoal->positionConstraintTrans->A_link() = eeGoal->link;
+        eeGoal->positionConstraintTrans->A_localpos() = eeGoal->localPose;
+        eeGoal->positionConstraintTrans->B_link() = nullptr;
         for(int k=0;k<6;k++){
-          eeGoal->positionConstraint->weight()[k] = eeGoal->freeAxis[k] ? 0.0 : 1.0;
+          if(k<3){
+            eeGoal->positionConstraintTrans->weight()[k] = eeGoal->freeAxis[k] ? 0.0 : 1.0;
+          }else{
+            eeGoal->positionConstraintTrans->weight()[k] = 0.0;
+          }
         }
-        eeGoal->positionConstraint->eval_link() = nullptr;
-        eeGoal->positionConstraint->maxAccByPosError() = 5 * cnoid::Vector6::Ones();
-        eeGoal->positionConstraint->maxAccByVelError() = 10 * cnoid::Vector6::Ones();
-        eeGoal->positionConstraint->maxAcc() = 15 * cnoid::Vector6::Ones();
-        eeGoal->positionConstraint->pgain() << this->Kp, this->Kp, this->Kp, this->Kr, this->Kr, this->Kr;
-        eeGoal->positionConstraint->dgain() << this->Dp, this->Dp, this->Dp, this->Dr, this->Dr, this->Dr;
+        eeGoal->positionConstraintTrans->eval_link() = nullptr;
+        eeGoal->positionConstraintTrans->maxAccByPosError() = 5 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraintTrans->maxAccByVelError() = 10 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraintTrans->maxAcc() = 15 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraintTrans->pgain() << this->Kp, this->Kp, this->Kp, this->Kr, this->Kr, this->Kr;
+        eeGoal->positionConstraintTrans->dgain() << this->Dp, this->Dp, this->Dp, this->Dr, this->Dr, this->Dr;
+      }
+      {
+        if(!eeGoal->positionConstraintRot){
+          eeGoal->positionConstraintRot = std::make_shared<aik_constraint::PositionConstraint>();
+        }
+        eeGoal->positionConstraintRot->A_link() = eeGoal->link;
+        eeGoal->positionConstraintRot->A_localpos() = eeGoal->localPose;
+        eeGoal->positionConstraintRot->B_link() = nullptr;
+        for(int k=0;k<6;k++){
+          if(k<3){
+            eeGoal->positionConstraintRot->weight()[k] = 0.0;
+          }else{
+            eeGoal->positionConstraintRot->weight()[k] = eeGoal->freeAxis[k] ? 0.0 : 1.0;
+          }
+        }
+        eeGoal->positionConstraintRot->eval_link() = nullptr;
+        eeGoal->positionConstraintRot->maxAccByPosError() = 5 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraintRot->maxAccByVelError() = 10 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraintRot->maxAcc() = 15 * cnoid::Vector6::Ones();
+        eeGoal->positionConstraintRot->pgain() << this->Kp, this->Kp, this->Kp, this->Kr, this->Kr, this->Kr;
+        eeGoal->positionConstraintRot->dgain() << this->Dp, this->Dp, this->Dp, this->Dr, this->Dr, this->Dr;
       }
 
 

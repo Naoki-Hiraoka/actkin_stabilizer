@@ -86,8 +86,10 @@ namespace actkin_stabilizer {
     bool calcEEFConstraints(const State& state,
                             const Goal& goals,
                             const std::string& instance_name,
-                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
-                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints) const;
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransHighConstraints,
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotHighConstraints,
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransLowConstraints,
+                            std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotLowConstraints) const;
 
     bool calcJointConstraints(const State& state,
                               const Goal& goals,
@@ -105,8 +107,10 @@ namespace actkin_stabilizer {
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& keepContactConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& collisionAvoidanceConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& comConstraints,
-                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefHighConstraints,
-                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefLowConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransHighConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotHighConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefTransLowConstraints,
+                 const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& eefRotLowConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& jointAngleConstraints,
                  const std::vector<std::shared_ptr<aik_constraint::IKConstraint> >& angularMomentumConstraints,
                  const std::string& instance_name,
